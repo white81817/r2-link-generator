@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>R2 公開連結產生器</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f4f4f4;
+      padding: 2em;
+      text-align: center;
+    }
+    textarea {
+      width: 90%;
+      height: 150px;
+      margin-top: 1em;
+      padding: 0.5em;
+      font-family: monospace;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    #url-output {
+      margin-top: 1em;
+      padding: 1em;
+      background: #e0f7fa;
+      border-radius: 5px;
+      word-break: break-word;
+      text-align: left;
+      white-space: pre-wrap;
+      max-width: 90%;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .url-line {
+      margin-bottom: 0.5em;
+      cursor: pointer;
+      padding: 0.5em;
+      border-radius: 3px;
+      transition: background-color 0.2s;
+    }
+    .url-line:hover {
+      background: #d0f0f5;
+    }
+    .button-group {
+      margin: 1em 0;
+      display: flex;
+      gap: 1em;
+      justify-content: center;
+    }
+    button {
+      padding: 0.5em 1em;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background: #1976D2;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #4CAF50;
+    }
+    button.secondary:hover {
+      background: #388E3C;
+    }
+    .loading {
+      display: none;
+      margin-top: 1em;
+      color: #666;
+    }
+    .loading.active {
+      display: block;
+    }
+    .error {
+      color: #f44336;
+      margin-top: 1em;
+      padding: 1em;
+      background: #ffebee;
+      border-radius: 5px;
+    }
+    .success {
+      color: #4CAF50;
+    }
+    #copyAllBtn {
+      display: none;
+    }
+    #copyAllBtn.visible {
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h2>📤 R2 雲端連結產生器</h2>
+
+  <p>請貼上檔案路徑（支援多行、空格或逗號分隔）：</p>
+  <textarea id="pathInput" placeholder="支援以下格式：
+1. 每行一個路徑
+2. 空格分隔的多個路徑
+3. 逗號分隔的多個路徑
+例如：
+Z:\\ColorFan\\涼倍速\\01.jpg
+/volume1/官網/ColorFan/01.jpg
+或
+Z:\\ColorFan\\涼倍速\\01.jpg Z:\\ColorFan\\涼倍速\\02.jpg
+或
+Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
+  
+  <div class="button-group">
+    <button id="generateBtn" onclick="generateLinks()">🔗 產生連結</button>
+    <button id="copyAllBtn" class="secondary" onclick="copyAllLinks()">📋 複製全部連結</button>
+    <button id="clearBtn" onclick="clearAll()">🗑️ 清除</button>
+  </div>
+  
+  <div id="loading" class="loading">處理中...</div>
+  <div id="url-output"></div>
+
+  <script>
+    const baseURL = "https://r2.example.com/"; // 請修改為您的實際 R2 存儲位置
+    let generatedUrls = []; // 儲存生成的URL
+
+    function clearAll() {
+      document.getElementById('pathInput').value = '';
+      document.getElementById('url-output').innerHTML = '';
+      document.getElementById('copyAllBtn').classList.remove('visible');
+      generatedUrls = [];
+    }
+
+    function processInput(input) {
+      // 移除開頭和結尾的引號
+      input = input.replace(/^["']|["']$/g, '').trim();
+      
+      // 分割輸入（支援換行、空格和逗號）
+      let paths = input
+        .split(/[\n,]/)
+        .flatMap(line => line.trim().split(/\s+/))
+        .filter(path => path.trim().length > 0)
+        .map(path => path.trim());
+      
+      return [...new Set(paths)]; // 移除重複的路徑
+    }
+
+    async function generateLinks() {
+      const input = document.getElementById("pathInput").value.trim();
+      const outputDiv = document.getElementById("url-output");
+      const loadingDiv = document.getElementById("loading");
+      const generateBtn = document.getElementById("generateBtn");
+      const copyAllBtn = document.getElementById("copyAllBtn");
+
+      if (!input) {
+        outputDiv.innerHTML = '<div class="error">⚠️ 請輸入檔案路徑</div>';
+        return;
+      }
+
+      try {
+        generateBtn.disabled = true;
+        loadingDiv.classList.add("active");
+        outputDiv.innerHTML = "";
+        generatedUrls = []; // 清空之前的URL
+
+        const paths = processInput(input);
+        let output = "";
+        let validPathsFound = false;
+
+        for (let path of paths) {
+          let relativePath = null;
+
+          if (/官網[\\\/]+/.test(path)) {
+            let match = path.match(/官網[\\\/]+(.+)/);
+            if (match && match[1]) {
+              relativePath = match[1];
+            }
+          } else if (/^[A-Za-z]:[\\\/]+/.test(path)) {
+            relativePath = path.replace(/^[A-Za-z]:[\\\/]+/, "");
+          }
+
+          if (relativePath) {
+            validPathsFound = true;
+            const finalPath = relativePath.replace(/\\/g, "/").replace(/\//g, "/");
+            const fullURL = baseURL + finalPath;
+            generatedUrls.push(fullURL);
+            output += `<div class='url-line' onclick="copyToClipboard('${fullURL}', this)">
+              🔗 ${fullURL}
+            </div>`;
+          } else {
+            output += `<div class='url-line error'>❌ 無效路徑：${path}</div>`;
+          }
+        }
+
+        if (!validPathsFound) {
+          output = '<div class="error">⚠️ 沒有找到有效的路徑，請確認輸入格式是否正確</div>';
+          copyAllBtn.classList.remove('visible');
+        } else {
+          copyAllBtn.classList.add('visible');
+        }
+
+        outputDiv.innerHTML = output;
+      } catch (error) {
+        outputDiv.innerHTML = `<div class="error">❌ 發生錯誤：${error.message}</div>`;
+      } finally {
+        generateBtn.disabled = false;
+        loadingDiv.classList.remove("active");
+      }
+    }
+
+    async function copyToClipboard(text, element) {
+      try {
+        await navigator.clipboard.writeText(text);
+        const originalText = element.innerHTML;
+        element.innerHTML = '✅ 已複製！';
+        element.classList.add('success');
+        
+        setTimeout(() => {
+          element.innerHTML = originalText;
+          element.classList.remove('success');
+        }, 2000);
+      } catch (err) {
+        alert('❌ 複製失敗：' + err.message);
+      }
+    }
+
+    async function copyAllLinks() {
+      if (generatedUrls.length === 0) {
+        alert('❌ 沒有可複製的連結');
+        return;
+      }
+
+      try {
+        const text = generatedUrls.join('\n');
+        await navigator.clipboard.writeText(text);
+        const copyAllBtn = document.getElementById('copyAllBtn');
+        const originalText = copyAllBtn.innerHTML;
+        copyAllBtn.innerHTML = '✅ 已複製全部！';
+        
+        setTimeout(() => {
+          copyAllBtn.innerHTML = originalText;
+        }, 2000);
+      } catch (err) {
+        alert('❌ 複製失敗：' + err.message);
+      }
+    }
+
+    // 添加鍵盤快捷鍵
+    document.getElementById('pathInput').addEventListener('keydown', function(e) {
+      if (e.ctrlKey && e.key === 'Enter') {
+        generateLinks();
+      }
+    });
+  </script>
+</body>
+</html>
