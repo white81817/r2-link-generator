@@ -152,10 +152,90 @@
         margin: 0 auto;
       }
     }
+
+    .tips-section {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 1em;
+      margin: 1em auto;
+      max-width: 600px;
+      text-align: left;
+    }
+
+    .tips-section h3 {
+      margin-top: 0;
+      color: var(--notion-text);
+      font-size: 1.1em;
+    }
+
+    .tip-item {
+      margin: 0.8em 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+    }
+
+    .os-badge {
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-weight: bold;
+      min-width: 70px;
+      text-align: center;
+    }
+
+    .os-badge.mac {
+      background: #007AFF;
+      color: white;
+    }
+
+    .os-badge.windows {
+      background: #00A4EF;
+      color: white;
+    }
+
+    kbd {
+      background: #eee;
+      border-radius: 3px;
+      border: 1px solid #b4b4b4;
+      box-shadow: 0 1px 1px rgba(0,0,0,.2);
+      color: #333;
+      display: inline-block;
+      font-size: .85em;
+      font-weight: 700;
+      line-height: 1;
+      padding: 2px 6px;
+      white-space: nowrap;
+    }
+
+    /* 深色模式適配 */
+    @media (prefers-color-scheme: dark) {
+      .tips-section {
+        background: var(--notion-hover);
+      }
+
+      kbd {
+        background: #333;
+        border-color: #666;
+        color: #fff;
+      }
+    }
   </style>
 </head>
 <body>
   <h2>📤 R2 公開連結產生器</h2>
+
+  <div class="tips-section">
+    <h3>💡 如何複製檔案路徑？</h3>
+    <div class="tip-item">
+      <span class="os-badge mac">Mac</span>
+      按住 <kbd>Option</kbd> + <kbd>右鍵</kbd> 點擊檔案，選擇「複製檔案名稱」
+    </div>
+    <div class="tip-item">
+      <span class="os-badge windows">Windows</span>
+      按住 <kbd>Shift</kbd> + <kbd>右鍵</kbd> 點擊檔案，選擇「複製路徑」
+    </div>
+  </div>
 
   <p>請貼上檔案路徑（支援多行、空格或逗號分隔）：</p>
   <textarea id="pathInput" placeholder="支援以下格式：
