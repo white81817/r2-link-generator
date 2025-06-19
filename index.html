@@ -273,14 +273,13 @@ Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
 
     function processInput(input) {
       // 移除開頭和結尾的引號
-      input = input.replace(/^["']|["']$/g, '').trim();
+      input = input.replace(/^['"]|['"]$/g, '').trim();
       
-      // 分割輸入（支援換行、空格和逗號）
+      // 只用換行和逗號分割，保留空格
       let paths = input
         .split(/[\n,]/)
-        .flatMap(line => line.trim().split(/\s+/))
-        .filter(path => path.trim().length > 0)
-        .map(path => path.trim());
+        .map(line => line.trim())
+        .filter(path => path.length > 0);
       
       return [...new Set(paths)]; // 移除重複的路徑
     }
