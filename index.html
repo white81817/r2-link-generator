@@ -281,11 +281,25 @@ Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
         // 移除開頭和結尾的引號
         input = input.replace(/^['"]|['"]$/g, '').trim();
         
-        // 用換行和逗號分割
-        let paths = input
-          .split(/[\n,]/)
-          .map(line => line.trim())
-          .filter(path => path.length > 0);
+        // 先按換行分割，然後在每一行中按空格分割
+        let paths = [];
+        let lines = input.split('\n');
+        
+        for (let line of lines) {
+          line = line.trim();
+          if (!line) continue;
+          
+          // 檢查是否包含逗號
+          if (line.includes(',')) {
+            // 如果有逗號，按逗號分割
+            let commaPaths = line.split(',').map(p => p.trim()).filter(p => p.length > 0);
+            paths.push(...commaPaths);
+          } else {
+            // 否則按空格分割
+            let spacePaths = line.split(/\s+/).map(p => p.trim()).filter(p => p.length > 0);
+            paths.push(...spacePaths);
+          }
+        }
         
         return [...new Set(paths)];
       }
