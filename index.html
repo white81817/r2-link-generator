@@ -272,16 +272,25 @@ Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
     }
 
     function processInput(input) {
-      // 移除開頭和結尾的引號
-      input = input.replace(/^['"]|['"]$/g, '').trim();
+      // 直接使用正則表達式匹配所有引號包圍的路徑
+      const quotedPaths = input.match(/'[^']*'/g) || [];
+      const cleanPaths = quotedPaths.map(p => p.replace(/^'|'$/g, ''));
       
-      // 只用換行和逗號分割，保留空格
-      let paths = input
-        .split(/[\n,]/)
-        .map(line => line.trim())
-        .filter(path => path.length > 0);
+      // 如果沒有找到引號包圍的路徑，嘗試其他格式
+      if (cleanPaths.length === 0) {
+        // 移除開頭和結尾的引號
+        input = input.replace(/^['"]|['"]$/g, '').trim();
+        
+        // 用換行和逗號分割
+        let paths = input
+          .split(/[\n,]/)
+          .map(line => line.trim())
+          .filter(path => path.length > 0);
+        
+        return [...new Set(paths)];
+      }
       
-      return [...new Set(paths)]; // 移除重複的路徑
+      return [...new Set(cleanPaths)]; // 移除重複的路徑
     }
 
     async function generateLinks() {
@@ -309,7 +318,10 @@ Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
         for (let path of paths) {
           let relativePath = null;
 
-          if (/官網[\\\/]+/.test(path)) {
+          // 簡化的路徑匹配邏輯
+          if (path.includes('SynologyDrive-官網/')) {
+            relativePath = path.split('SynologyDrive-官網/')[1];
+          } else if (path.includes('官網/') || path.includes('官網\\')) {
             let match = path.match(/官網[\\\/]+(.+)/);
             if (match && match[1]) {
               relativePath = match[1];
