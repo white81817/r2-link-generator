@@ -272,11 +272,17 @@ Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
     }
 
     function processInput(input) {
-      // 直接使用正則表達式匹配所有引號包圍的路徑
-      const quotedPaths = input.match(/'[^']*'/g) || [];
-      const cleanPaths = quotedPaths.map(p => p.replace(/^'|'$/g, ''));
+      // 先嘗試匹配雙引號包圍的路徑
+      const doubleQuotedPaths = input.match(/"[^"]*"/g) || [];
+      let cleanPaths = doubleQuotedPaths.map(p => p.replace(/^"|"$/g, ''));
       
-      // 如果沒有找到引號包圍的路徑，嘗試其他格式
+      // 如果沒有找到雙引號包圍的路徑，嘗試單引號
+      if (cleanPaths.length === 0) {
+        const singleQuotedPaths = input.match(/'[^']*'/g) || [];
+        cleanPaths = singleQuotedPaths.map(p => p.replace(/^'|'$/g, ''));
+      }
+      
+      // 如果還是沒有找到引號包圍的路徑，嘗試其他格式
       if (cleanPaths.length === 0) {
         // 移除開頭和結尾的引號
         input = input.replace(/^['"]|['"]$/g, '').trim();
