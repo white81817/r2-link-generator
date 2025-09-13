@@ -261,7 +261,7 @@ Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
 
   <script>
     // 直接設定 baseURL
-    const baseURL = "https://photos.shaner.com.tw/file/deeping/";
+    const baseURL = "https://img.shaner.com.tw/";
     let generatedUrls = []; // 儲存生成的URL
 
     function clearAll() {
@@ -341,6 +341,11 @@ Z:\\ColorFan\\涼倍速\\01.jpg, Z:\\ColorFan\\涼倍速\\02.jpg"></textarea>
           // 簡化的路徑匹配邏輯
           if (path.includes('SynologyDrive-官網/')) {
             relativePath = path.split('SynologyDrive-官網/')[1];
+          } else if (path.includes('SynologyDrive/') || path.includes('SynologyDrive\\')) {
+            let match = path.match(/SynologyDrive[\\\/]+(.+)/);
+            if (match && match[1]) {
+              relativePath = match[1];
+            }
           } else if (path.includes('官網/') || path.includes('官網\\')) {
             let match = path.match(/官網[\\\/]+(.+)/);
             if (match && match[1]) {
