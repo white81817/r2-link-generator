@@ -2548,9 +2548,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
   <!-- =================== 刷庫存腳本 =================== -->
   <script>
     // Global ERP maps
-    // erpSingleMap: { 真商品編號 -> availableStock }
-    // erpCompositeMap: { 複合編號 -> { sets, bottleneckCode, bottleneckStock } }
+    // erpSingleMap:      { 真商品編號 -> stock }  ← 用於顯示 & 複合商品計算
+    // erpBarcodeMap:     { 品項條碼   -> stock }  ← 比對優先第1
+    // erpCompositeMap:   { 複合編號   -> {sets,...} } ← 比對優先第2
+    // erpProductCodeMap: { 商品編號   -> stock }  ← 比對優先第3
     let erpSingleMap = {};
+    let erpBarcodeMap = {};
+    let erpProductCodeMap = {};
     let erpCompositeMap = {};
     let erpLoaded = false;
 
@@ -2564,6 +2568,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const status = document.getElementById('erpStatus');
       status.textContent = '解析中…';
       erpSingleMap = {};
+      erpBarcodeMap = {};
+      erpProductCodeMap = {};
       erpCompositeMap = {};
 
       const promises = [];
@@ -2588,9 +2594,18 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 if (!productCode) continue;
                 // 真商品編號 rule: barcode if present, else productCode
                 const trueCode = barcode ? barcode : productCode;
-                // Keep highest stock if duplicate
+                // 顯示用 map（去重，保留最高庫存）
                 if (!(trueCode in erpSingleMap) || stock > erpSingleMap[trueCode]) {
                   erpSingleMap[trueCode] = stock;
+                }
+                // 比對用 map（分開存，讓 updatePlatform 可以依優先順序查）
+                if (barcode) {
+                  if (!(barcode in erpBarcodeMap) || stock > erpBarcodeMap[barcode]) {
+                    erpBarcodeMap[barcode] = stock;
+                  }
+                }
+                if (!(productCode in erpProductCodeMap) || stock > erpProductCodeMap[productCode]) {
+                  erpProductCodeMap[productCode] = stock;
                 }
                 count++;
               }
@@ -2784,10 +2799,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               if (!code) continue;
               matched++;
               let stock = null;
-              if (erpSingleMap[code] !== undefined) {
-                stock = erpSingleMap[code];
+              if (erpBarcodeMap[code] !== undefined) {
+                stock = erpBarcodeMap[code];          // 1. 品項條碼
               } else if (erpCompositeMap[code] !== undefined) {
-                stock = erpCompositeMap[code].sets;
+                stock = erpCompositeMap[code].sets;   // 2. 複合編號
+              } else if (erpProductCodeMap[code] !== undefined) {
+                stock = erpProductCodeMap[code];      // 3. 商品編號
               }
               if (stock !== null) {
                 rows[i][16] = stock;
@@ -2804,10 +2821,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               if (!code) continue;
               matched++;
               let stock = null;
-              if (erpSingleMap[code] !== undefined) {
-                stock = erpSingleMap[code];
+              if (erpBarcodeMap[code] !== undefined) {
+                stock = erpBarcodeMap[code];          // 1. 品項條碼
               } else if (erpCompositeMap[code] !== undefined) {
-                stock = erpCompositeMap[code].sets;
+                stock = erpCompositeMap[code].sets;   // 2. 複合編號
+              } else if (erpProductCodeMap[code] !== undefined) {
+                stock = erpProductCodeMap[code];      // 3. 商品編號
               }
               if (stock !== null) {
                 rows[i][3] = stock;
