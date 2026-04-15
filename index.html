@@ -1720,7 +1720,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const boxNum   = parseInt(document.getElementById(`poBox_${vi}`).value) || 1;
       const boxTotal = parseInt(document.getElementById(`poBoxTotal_${vi}`).value) || 1;
 
-      // 合計相同商品名稱＋樣式＋尺寸的數量（匯總顯示）
+      // 合計相同商品的數量
       const merged = {};
       for (const it of items) {
         const key = `${it.name}|||${it.style}|||${it.size}|||${it.code}`;
@@ -1728,87 +1728,114 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         merged[key].qty += it.qty;
       }
       const mergedItems = Object.values(merged);
-
-      // 建立 A4 DOM 元素 (794 x 1122 px = 210mm x 297mm @ 96dpi)
-      const A4W = 794, A4H = 1122;
-      const markDiv = document.createElement('div');
-      markDiv.style.cssText = `
-        position:absolute; left:-9999px; top:0;
-        width:${A4W}px; height:${A4H}px;
-        background:white; font-family:sans-serif;
-        box-sizing:border-box; padding:48px 60px;
-        display:flex; flex-direction:column;
-      `;
-
-      // 叫貨單號列表
       const orderStr = [...orderNos].join('、');
 
-      // 商品列
-      const rowsHTML = mergedItems.map((it, i) => `
-        <tr style="background:${i%2===0?'#f9fafb':'white'}">
-          <td style="border:1px solid #ccc; padding:10px 14px; font-size:15px;">${it.name}</td>
-          <td style="border:1px solid #ccc; padding:10px 14px; font-size:15px; color:#555;">${[it.style, it.size].filter(Boolean).join(' / ')}</td>
-          <td style="border:1px solid #ccc; padding:10px 14px; font-size:14px; font-family:monospace;">${it.code}</td>
-          <td style="border:1px solid #ccc; padding:10px 14px; font-size:16px; font-weight:bold; text-align:right;">${it.qty}</td>
-        </tr>`).join('');
+      // A4 @96dpi: 794 x 1122px
+      const W = 794, H = 1122;
+      const PL = 60, PR = 60, PT = 52;
+      const CW = W - PL - PR; // 674px
 
-      markDiv.innerHTML = `
-        <div style="text-align:center; font-size:26px; font-weight:bold; letter-spacing:2px; margin-bottom:20px; color:#111;">
-          叫貨單內容物
-        </div>
-        <div style="font-size:16px; color:#555; margin-bottom:8px;">叫貨單號：${orderStr}</div>
-        <div style="font-size:20px; font-weight:bold; margin-bottom:20px; color:#222; padding-bottom:12px; border-bottom:2px solid #333;">
-          廠商：${vendor}
-        </div>
-        <table style="width:100%; border-collapse:collapse; margin-bottom:auto;">
-          <thead>
-            <tr style="background:#e5e7eb;">
-              <th style="border:1px solid #ccc; padding:10px 14px; text-align:left; font-size:15px;">商品名稱</th>
-              <th style="border:1px solid #ccc; padding:10px 14px; text-align:left; font-size:15px; width:140px;">樣式/尺寸</th>
-              <th style="border:1px solid #ccc; padding:10px 14px; text-align:left; font-size:15px; width:130px;">商品編號</th>
-              <th style="border:1px solid #ccc; padding:10px 14px; text-align:right; font-size:15px; width:80px;">數量</th>
-            </tr>
-          </thead>
-          <tbody>${rowsHTML}</tbody>
-        </table>
-        <div style="
-          margin-top:32px;
-          border:4px solid #111;
-          border-radius:8px;
-          text-align:center;
-          padding:28px 20px;
-          font-size:72px;
-          font-weight:900;
-          letter-spacing:4px;
-          color:#111;
-          line-height:1.1;
-        ">
-          第 ${boxNum} 箱 / 共 ${boxTotal} 箱
-        </div>
-      `;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
 
-      document.body.appendChild(markDiv);
-      // 等瀏覽器完成 render 再截圖
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // 背景
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, W, H);
 
-      try {
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', hotfixes: ['px_scaling'] });
+      let y = PT;
 
-        const dataUrl = await domtoimage.toPng(markDiv, {
-          width: A4W, height: A4H,
-          quality: 1.0
+      // 標題
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#111';
+      ctx.fillText('叫貨單內容物', W / 2, y + 28);
+      y += 56;
+
+      // 叫貨單號
+      ctx.font = '15px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#666';
+      ctx.fillText('叫貨單號：' + orderStr, PL, y);
+      y += 30;
+
+      // 廠商名稱
+      ctx.font = 'bold 21px sans-serif';
+      ctx.fillStyle = '#222';
+      ctx.fillText('廠商：' + vendor, PL, y);
+      y += 18;
+
+      // 分隔線
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(PL, y); ctx.lineTo(W - PR, y);
+      ctx.stroke();
+      y += 18;
+
+      // 表格欄位寬度（合計 = CW = 674）
+      const colW = [CW - 155 - 135 - 75, 155, 135, 75]; // 名稱, 樣式/尺寸, 編號, 數量
+      const colX = [PL];
+      colW.slice(0, -1).forEach((w, i) => colX.push(colX[i] + w));
+      const ROW_H = 38;
+
+      const drawRow = (cells, bg, bold) => {
+        ctx.fillStyle = bg;
+        ctx.fillRect(PL, y, CW, ROW_H);
+
+        // 外框 & 垂直線
+        ctx.strokeStyle = '#bbb';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(PL, y, CW, ROW_H);
+        colX.slice(1).forEach(x => {
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + ROW_H); ctx.stroke();
         });
 
-        pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'NONE');
-        const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
-        pdf.save(`嘜頭_${safeVendor}_第${boxNum}箱.pdf`);
-      } catch (e) {
-        alert('嘜頭 PDF 產生失敗：' + e.message);
-        console.error(e);
-      } finally {
-        document.body.removeChild(markDiv);
-      }
+        ctx.fillStyle = bold ? '#333' : '#222';
+        ctx.font = (bold ? 'bold ' : '') + '14px sans-serif';
+        cells.forEach((cell, i) => {
+          const isRight = (i === cells.length - 1);
+          ctx.textAlign = isRight ? 'right' : 'left';
+          const tx = isRight ? colX[i] + colW[i] - 10 : colX[i] + 10;
+          let text = String(cell);
+          const maxW = colW[i] - 20;
+          while (ctx.measureText(text).width > maxW && text.length > 1) text = text.slice(0, -1);
+          if (text !== String(cell)) text += '…';
+          ctx.fillText(text, tx, y + ROW_H / 2 + 6);
+        });
+        y += ROW_H;
+      };
+
+      // 表頭
+      drawRow(['商品名稱', '樣式/尺寸', '商品編號', '數量'], '#e5e7eb', true);
+
+      // 資料列
+      mergedItems.forEach((it, i) => {
+        const styleSize = [it.style, it.size].filter(Boolean).join(' / ');
+        drawRow([it.name, styleSize, it.code, it.qty], i % 2 === 0 ? '#f9fafb' : 'white', false);
+      });
+
+      // 箱號大字區塊（距底部固定位置）
+      const BOX_H = 170;
+      const BOX_Y = H - 52 - BOX_H;
+
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(PL, BOX_Y, CW, BOX_H);
+
+      ctx.font = 'bold 72px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#111';
+      ctx.fillText(`第 ${boxNum} 箱 / 共 ${boxTotal} 箱`, W / 2, BOX_Y + BOX_H / 2 + 26);
+
+      // 輸出 PDF
+      const dataUrl = canvas.toDataURL('image/png', 1.0);
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'NONE');
+      const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
+      pdf.save(`嘜頭_${safeVendor}_第${boxNum}箱.pdf`);
     }
   </script>
 
