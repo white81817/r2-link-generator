@@ -2557,6 +2557,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     let erpProductCodeMap = {};
     let erpCompositeMap = {};
     let erpLoaded = false;
+    // 可預購判斷（銷售模式=可追）
+    let erpSingleCanPreorderMap = {};   // { trueCode → bool }
+    let erpBarcodeCanPreorder = {};     // { barcode → bool }
+    let erpProductCodeCanPreorder = {}; // { productCode → bool }
 
     function parseErpData() {
       const singleFile = document.getElementById('erpSingleFile').files[0];
@@ -2571,6 +2575,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       erpBarcodeMap = {};
       erpProductCodeMap = {};
       erpCompositeMap = {};
+      erpSingleCanPreorderMap = {};
+      erpBarcodeCanPreorder = {};
+      erpProductCodeCanPreorder = {};
 
       const promises = [];
 
@@ -2591,6 +2598,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 const barcode = String(row[19] || '').trim();
                 const stockRaw = row[20];
                 const stock = Number(stockRaw) || 0;
+                const salesMode = String(row[18] || '').trim();
+                const canPreorder = (salesMode === '可追');
                 if (!productCode) continue;
                 // 真商品編號 rule: barcode if present, else productCode
                 const trueCode = barcode ? barcode : productCode;
@@ -2598,15 +2607,19 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 if (!(trueCode in erpSingleMap) || stock > erpSingleMap[trueCode]) {
                   erpSingleMap[trueCode] = stock;
                 }
+                // 可預購 map（以可追為準；同 trueCode 有一筆可追即算）
+                erpSingleCanPreorderMap[trueCode] = canPreorder || (erpSingleCanPreorderMap[trueCode] || false);
                 // 比對用 map（分開存，讓 updatePlatform 可以依優先順序查）
                 if (barcode) {
                   if (!(barcode in erpBarcodeMap) || stock > erpBarcodeMap[barcode]) {
                     erpBarcodeMap[barcode] = stock;
                   }
+                  erpBarcodeCanPreorder[barcode] = canPreorder || (erpBarcodeCanPreorder[barcode] || false);
                 }
                 if (!(productCode in erpProductCodeMap) || stock > erpProductCodeMap[productCode]) {
                   erpProductCodeMap[productCode] = stock;
                 }
+                erpProductCodeCanPreorder[productCode] = canPreorder || (erpProductCodeCanPreorder[productCode] || false);
                 count++;
               }
               resolve(count);
@@ -2652,10 +2665,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                     bottleneckStock = available;
                   }
                 }
+                // 複合商品可預購：所有組件的真商品編號都必須是可追
+                let compositeCanPreorder = Object.keys(components).length > 0;
+                for (const tc of Object.keys(components)) {
+                  if (!erpSingleCanPreorderMap[tc]) { compositeCanPreorder = false; break; }
+                }
                 erpCompositeMap[compositeCode] = {
                   sets: minSets === Infinity ? 0 : minSets,
                   bottleneckCode,
-                  bottleneckStock
+                  bottleneckStock,
+                  canPreorder: compositeCanPreorder
                 };
                 count++;
               }
@@ -2789,7 +2808,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           let matched = 0, unmatched = 0, updated = 0;
 
           if (type === 'website') {
-            // 官網: col 1=類型, col 13=貨號, col 16=現貨數量
+            // 官網: col 1=類型, col 13=貨號, col 16=現貨數量, col 17=預購數量
             // Only update rows where col 1 === '子項'
             for (let i = 1; i < rows.length; i++) {
               const row = rows[i];
@@ -2799,15 +2818,20 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               if (!code) continue;
               matched++;
               let stock = null;
+              let canPreorder = false;
               if (erpBarcodeMap[code] !== undefined) {
-                stock = erpBarcodeMap[code];          // 1. 品項條碼
+                stock = erpBarcodeMap[code];                         // 1. 品項條碼
+                canPreorder = erpBarcodeCanPreorder[code] || false;
               } else if (erpCompositeMap[code] !== undefined) {
-                stock = erpCompositeMap[code].sets;   // 2. 複合編號
+                stock = erpCompositeMap[code].sets;                  // 2. 複合編號
+                canPreorder = erpCompositeMap[code].canPreorder || false;
               } else if (erpProductCodeMap[code] !== undefined) {
-                stock = erpProductCodeMap[code];      // 3. 商品編號
+                stock = erpProductCodeMap[code];                     // 3. 商品編號
+                canPreorder = erpProductCodeCanPreorder[code] || false;
               }
               if (stock !== null) {
-                rows[i][16] = stock;
+                rows[i][16] = stock;                        // 現貨數量
+                rows[i][17] = canPreorder ? 500 : 0;       // 預購數量
                 updated++;
               } else {
                 unmatched++;
@@ -2839,16 +2863,34 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             }
           }
 
-          // Export updated file
-          const newWs = XLSX.utils.aoa_to_sheet(rows);
-          const newWb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(newWb, newWs, wb.SheetNames[0]);
+          // Export updated file（官網超過 500 列自動分割）
           const platformName = type === 'website' ? '官網' : '媽咪愛';
           const today = new Date();
           const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
-          XLSX.writeFile(newWb, `${platformName}_庫存更新_${dateStr}.xlsx`);
+          const sheetName = wb.SheetNames[0];
+          const CHUNK_SIZE = 500;
 
-          statusEl.innerHTML = `✅ 完成匯出｜比對 ${matched} 筆，更新 <strong>${updated}</strong> 筆，未找到 ${unmatched} 筆`;
+          if (type === 'website' && rows.length - 1 > CHUNK_SIZE) {
+            // 分割：header + 每 500 筆資料一個檔案
+            const header = rows[0];
+            const dataRows = rows.slice(1);
+            let fileNum = 1;
+            for (let offset = 0; offset < dataRows.length; offset += CHUNK_SIZE) {
+              const chunk = [header, ...dataRows.slice(offset, offset + CHUNK_SIZE)];
+              const splitWs = XLSX.utils.aoa_to_sheet(chunk);
+              const splitWb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(splitWb, splitWs, sheetName);
+              XLSX.writeFile(splitWb, `${platformName}_庫存更新_${dateStr}_part${fileNum}.xlsx`);
+              fileNum++;
+            }
+            statusEl.innerHTML = `✅ 完成匯出（共 ${fileNum - 1} 個檔案）｜比對 ${matched} 筆，更新 <strong>${updated}</strong> 筆，未找到 ${unmatched} 筆`;
+          } else {
+            const newWs = XLSX.utils.aoa_to_sheet(rows);
+            const newWb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(newWb, newWs, sheetName);
+            XLSX.writeFile(newWb, `${platformName}_庫存更新_${dateStr}.xlsx`);
+            statusEl.innerHTML = `✅ 完成匯出｜比對 ${matched} 筆，更新 <strong>${updated}</strong> 筆，未找到 ${unmatched} 筆`;
+          }
         } catch(err) {
           statusEl.textContent = '❌ 處理失敗：' + err.message;
         }
