@@ -1987,7 +1987,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-yellow-100">售價<br><span class="font-normal text-gray-400">手填</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-green-100">特價<br><span class="font-normal text-gray-400">=售價</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-blue-100">原價<br><span class="font-normal text-gray-400">÷0.8整十</span></th>
-                <th class="border px-2 py-2 text-right whitespace-nowrap bg-purple-100">毛利率<br><span class="font-normal text-gray-400">目標&lt;58%</span></th>
+                <th class="border px-2 py-2 text-right whitespace-nowrap bg-purple-100">毛利率<br><span class="font-normal text-gray-400">目標&gt;41%</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">現貨庫存</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">預購數量</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">安全庫存</th>
@@ -2001,7 +2001,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <tbody id="variantRows"></tbody>
           </table>
         </div>
-        <p class="text-xs text-red-400 mt-2">⚠ 毛利率建議控制&lt;58%，廣告費用至少佔 25%，高於 58% 危險</p>
+        <p class="text-xs text-red-400 mt-2">⚠ 毛利率建議控制&gt;41%，廣告費用至少佔 25%，低於 41% 危險</p>
       </div>
 
       <!-- 匯出按鈕 -->
@@ -2059,7 +2059,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (sell && cost) {
         const margin = (sell - cost - misc) / sell;
         marginEl.value = (margin * 100).toFixed(1) + '%';
-        marginEl.style.color = margin < 0.58 ? '#16a34a' : '#dc2626';
+        marginEl.style.color = margin > 0.41 ? '#16a34a' : '#dc2626';
         marginEl.style.fontWeight = 'bold';
       } else {
         marginEl.value = '';
