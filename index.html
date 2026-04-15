@@ -1856,7 +1856,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'NONE');
       const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
-      pdf.save(`嘜頭_${safeVendor}_第${boxNum}箱.pdf`);
+      pdf.save(`嘜頭_${safeVendor}.pdf`);
     }
   </script>
 
