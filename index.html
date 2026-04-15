@@ -1940,14 +1940,21 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <label class="block text-sm font-bold text-gray-700 mb-1">加強文字（副標語）<span class="text-gray-400 font-normal text-xs ml-1">→ 也作為內部商品備註</span></label>
             <input id="p_highlight" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="舒適透氣，百搭首選">
           </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">商品材質成分</label>
+            <input id="p_material" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：100% 棉" oninput="syncDescriptionFromFields()">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">商品尺寸</label>
+            <input id="p_dimensions" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：長30cm × 寬20cm" oninput="syncDescriptionFromFields()">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">商品重量</label>
+            <input id="p_prod_weight" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：300g" oninput="syncDescriptionFromFields()">
+          </div>
           <div class="md:col-span-2">
-            <label class="block text-sm font-bold text-gray-700 mb-1">產品說明(不填要去掉)</label>
-            <textarea id="p_description" rows="5" class="w-full border rounded px-2 py-1.5 text-sm">📐 詳細規格
-• 品項/規格：
-• 商品材質成分：
-• 商品尺寸：
-• 尺寸建議：
-• 商品重量：</textarea>
+            <label class="block text-sm font-bold text-gray-700 mb-1">產品說明<span class="text-gray-400 font-normal text-xs ml-1">（可手動編輯）</span></label>
+            <textarea id="p_description" rows="6" class="w-full border rounded px-2 py-1.5 text-sm"></textarea>
           </div>
         </div>
       </div>
@@ -2169,6 +2176,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
     function setDB(db) { localStorage.setItem(PRODUCT_DB_KEY, JSON.stringify(db)); }
 
+    function syncDescriptionFromFields() {
+      const material   = pVal('p_material').trim();
+      const dimensions = pVal('p_dimensions').trim();
+      const weight     = pVal('p_prod_weight').trim();
+      document.getElementById('p_description').value =
+        `📐 詳細規格\n• 商品材質成分：${material}\n• 商品尺寸：${dimensions}\n• 商品重量：${weight}`;
+    }
+
     function collectFormData() {
       return {
         code:         pVal('p_code'),
@@ -2178,6 +2193,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         sellingMode:  pVal('p_selling_mode'),
         preorderNote: pVal('p_preorder_note'),
         highlight:    pVal('p_highlight'),
+        material:     pVal('p_material'),
+        dimensions:   pVal('p_dimensions'),
+        prodWeight:   pVal('p_prod_weight'),
         description:  pVal('p_description'),
         tagsChecked:  Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value),
         tagsCustom:   pVal('p_tags_custom'),
@@ -2263,7 +2281,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
       setVal('p_code', data.code);     setVal('p_name', data.name);
       setVal('p_vendor', data.vendor); setVal('p_preorder_note', data.preorderNote);
-      setVal('p_highlight', data.highlight); setVal('p_description', data.description);
+      setVal('p_highlight', data.highlight);
+      setVal('p_material', data.material); setVal('p_dimensions', data.dimensions); setVal('p_prod_weight', data.prodWeight);
+      setVal('p_description', data.description);
       setVal('p_tags_custom', data.tagsCustom);
       setVal('opt1_name', data.opt1Name || '樣式');
       setVal('opt2_name', data.opt2Name || '尺寸');
@@ -2432,10 +2452,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function clearProductForm() {
       if (!confirm('確定要清除所有填寫的資料嗎？')) return;
-      ['p_code','p_name','p_vendor','p_highlight','p_preorder_note','p_tags_custom'].forEach(id => {
+      ['p_code','p_name','p_vendor','p_highlight','p_preorder_note','p_tags_custom',
+       'p_material','p_dimensions','p_prod_weight','p_description'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
-      document.getElementById('p_description').value = '📐 詳細規格\n• 品項/規格：\n• 商品材質成分：\n• 商品尺寸：\n• 尺寸建議：\n• 商品重量：';
       document.getElementById('opt1_name').value = '樣式';
       document.getElementById('opt2_name').value = '尺寸';
       document.querySelectorAll('#p_tags .tag-cb').forEach(cb => cb.checked = false);
