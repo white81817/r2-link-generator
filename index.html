@@ -2534,6 +2534,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input type="file" id="websiteFile" accept=".xlsx,.xls" class="block text-sm mb-3">
             <button onclick="updatePlatform('website')" class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 text-sm font-medium w-full">更新官網庫存並匯出</button>
             <div id="websiteStatus" class="mt-2 text-sm text-gray-600"></div>
+            <div id="websiteUnmatched" class="mt-2 hidden"></div>
           </div>
           <div class="flex-1 min-w-64 border rounded-lg p-4">
             <div class="font-semibold text-gray-700 mb-2">👶 媽咪愛</div>
@@ -2541,6 +2542,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input type="file" id="mamyFile" accept=".xlsx,.xls" class="block text-sm mb-3">
             <button onclick="updatePlatform('mamy')" class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 text-sm font-medium w-full">更新媽咪愛庫存並匯出</button>
             <div id="mamyStatus" class="mt-2 text-sm text-gray-600"></div>
+            <div id="mamyUnmatched" class="mt-2 hidden"></div>
           </div>
         </div>
       </div>
@@ -2801,11 +2803,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       const fileInput = document.getElementById(type === 'website' ? 'websiteFile' : 'mamyFile');
       const statusEl = document.getElementById(type === 'website' ? 'websiteStatus' : 'mamyStatus');
+      const unmatchedEl = document.getElementById(type === 'website' ? 'websiteUnmatched' : 'mamyUnmatched');
       if (!fileInput.files[0]) {
         statusEl.textContent = '請選擇平台商品資料檔案。';
         return;
       }
       statusEl.textContent = '處理中…';
+      unmatchedEl.classList.add('hidden');
+      unmatchedEl.innerHTML = '';
 
       const reader = new FileReader();
       reader.onload = e => {
@@ -2815,6 +2820,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
           let matched = 0, unmatched = 0, updated = 0;
+          const unmatchedCodes = [];
 
           if (type === 'website') {
             // 官網: col 1=類型, col 13=貨號, col 16=現貨數量, col 17=預購數量
@@ -2844,6 +2850,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 updated++;
               } else {
                 unmatched++;
+                unmatchedCodes.push(code);
               }
             }
           } else {
@@ -2868,6 +2875,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 updated++;
               } else {
                 unmatched++;
+                unmatchedCodes.push(code);
               }
             }
           }
@@ -2899,6 +2907,18 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             XLSX.utils.book_append_sheet(newWb, newWs, sheetName);
             XLSX.writeFile(newWb, `${platformName}_庫存更新_${dateStr}.xlsx`);
             statusEl.innerHTML = `✅ 完成匯出｜比對 ${matched} 筆，更新 <strong>${updated}</strong> 筆，未找到 ${unmatched} 筆`;
+          }
+
+          // 顯示未比對資料
+          if (unmatchedCodes.length > 0) {
+            unmatchedEl.classList.remove('hidden');
+            unmatchedEl.innerHTML = `
+              <div class="border border-orange-200 rounded-lg bg-orange-50 p-3">
+                <div class="text-sm font-semibold text-orange-700 mb-2">⚠️ 未比對到的貨號（${unmatchedCodes.length} 筆）</div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${unmatchedCodes.map(c => `<span class="font-mono text-xs bg-white border border-orange-200 text-orange-800 px-2 py-0.5 rounded">${c}</span>`).join('')}
+                </div>
+              </div>`;
           }
         } catch(err) {
           statusEl.textContent = '❌ 處理失敗：' + err.message;
