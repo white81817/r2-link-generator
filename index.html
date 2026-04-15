@@ -1721,10 +1721,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const mergedItems = Object.values(merged);
       const orderStr = [...orderNos].join('、');
 
-      // A4 @96dpi: 794 x 1122px
-      const W = 794, H = 1122;
-      const PL = 60, PR = 60, PT = 52;
-      const CW = W - PL - PR; // 674px
+      // A5 橫式 @96dpi: 794 x 559px
+      const W = 794, H = 559;
+      const PL = 40, PR = 40, PT = 26;
+      const CW = W - PL - PR; // 714px
 
       const canvas = document.createElement('canvas');
       canvas.width = W;
@@ -1738,38 +1738,38 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       let y = PT;
 
       // 標題
-      ctx.font = 'bold 28px sans-serif';
+      ctx.font = 'bold 20px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = '#111';
-      ctx.fillText('叫貨單內容物', W / 2, y + 28);
-      y += 56;
+      ctx.fillText('叫貨單內容物', W / 2, y + 20);
+      y += 36;
 
       // 叫貨單號
-      ctx.font = '15px sans-serif';
+      ctx.font = '12px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = '#666';
       ctx.fillText('叫貨單號：' + orderStr, PL, y);
-      y += 30;
+      y += 18;
 
       // 廠商名稱
-      ctx.font = 'bold 21px sans-serif';
+      ctx.font = 'bold 16px sans-serif';
       ctx.fillStyle = '#222';
       ctx.fillText('廠商：' + vendor, PL, y);
-      y += 18;
+      y += 13;
 
       // 分隔線
       ctx.strokeStyle = '#333';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(PL, y); ctx.lineTo(W - PR, y);
       ctx.stroke();
-      y += 18;
+      y += 11;
 
-      // 表格欄位寬度（合計 = CW = 674）
-      const colW = [CW - 155 - 135 - 75, 155, 135, 75]; // 名稱, 樣式/尺寸, 編號, 數量
+      // 表格欄位寬度（合計 = CW = 714）
+      const colW = [CW - 130 - 108 - 56, 130, 108, 56]; // 名稱, 樣式/尺寸, 編號, 數量
       const colX = [PL];
       colW.slice(0, -1).forEach((w, i) => colX.push(colX[i] + w));
-      const ROW_H = 38;
+      const ROW_H = 26;
 
       const drawRow = (cells, bg, bold) => {
         ctx.fillStyle = bg;
@@ -1784,16 +1784,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         });
 
         ctx.fillStyle = bold ? '#333' : '#222';
-        ctx.font = (bold ? 'bold ' : '') + '14px sans-serif';
+        ctx.font = (bold ? 'bold ' : '') + '12px sans-serif';
         cells.forEach((cell, i) => {
           const isRight = (i === cells.length - 1);
           ctx.textAlign = isRight ? 'right' : 'left';
-          const tx = isRight ? colX[i] + colW[i] - 10 : colX[i] + 10;
+          const tx = isRight ? colX[i] + colW[i] - 8 : colX[i] + 8;
           let text = String(cell);
-          const maxW = colW[i] - 20;
+          const maxW = colW[i] - 16;
           while (ctx.measureText(text).width > maxW && text.length > 1) text = text.slice(0, -1);
           if (text !== String(cell)) text += '…';
-          ctx.fillText(text, tx, y + ROW_H / 2 + 6);
+          ctx.fillText(text, tx, y + ROW_H / 2 + 5);
         });
         y += ROW_H;
       };
@@ -1808,54 +1808,53 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       });
 
       // 箱號手寫區塊（距底部固定位置）
-      const BOX_H = 190;
-      const BOX_Y = H - 52 - BOX_H;
+      const BOX_H = 104;
+      const BOX_Y = H - 24 - BOX_H;
 
       // 外框
       ctx.strokeStyle = '#111';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2;
       ctx.strokeRect(PL, BOX_Y, CW, BOX_H);
 
       // 標籤文字
-      ctx.font = 'bold 18px sans-serif';
+      ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = '#555';
-      ctx.fillText('箱號（請出貨人員填寫）', PL + 16, BOX_Y + 28);
+      ctx.fillText('箱號（請出貨人員填寫）', PL + 12, BOX_Y + 20);
 
       // 手寫格：「第 ___ 箱 / 共 ___ 箱」
-      const lineY = BOX_Y + BOX_H / 2 + 28;
-      const lineColor = '#333';
-      const lineLen = 160;
+      const lineY = BOX_Y + 72;
+      const lineLen = 105;
 
-      ctx.font = 'bold 46px sans-serif';
-      ctx.fillStyle = lineColor;
+      ctx.font = 'bold 32px sans-serif';
+      ctx.fillStyle = '#333';
       ctx.textAlign = 'left';
 
       // 「第」
-      ctx.fillText('第', PL + 30, lineY);
+      ctx.fillText('第', PL + 20, lineY);
       // 底線1
       ctx.strokeStyle = '#444';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(PL + 85, lineY + 6);
-      ctx.lineTo(PL + 85 + lineLen, lineY + 6);
+      ctx.moveTo(PL + 58, lineY + 4);
+      ctx.lineTo(PL + 58 + lineLen, lineY + 4);
       ctx.stroke();
       // 「箱 / 共」
-      ctx.fillText('箱  /  共', PL + 85 + lineLen + 10, lineY);
+      ctx.fillText('箱  /  共', PL + 58 + lineLen + 8, lineY);
       // 底線2
-      const x2 = PL + 85 + lineLen + 10 + 170;
+      const x2 = PL + 58 + lineLen + 8 + 118;
       ctx.beginPath();
-      ctx.moveTo(x2, lineY + 6);
-      ctx.lineTo(x2 + lineLen, lineY + 6);
+      ctx.moveTo(x2, lineY + 4);
+      ctx.lineTo(x2 + lineLen, lineY + 4);
       ctx.stroke();
       // 「箱」
-      ctx.fillText('箱', x2 + lineLen + 10, lineY);
+      ctx.fillText('箱', x2 + lineLen + 8, lineY);
 
       // 輸出 PDF
       const dataUrl = canvas.toDataURL('image/png', 1.0);
       const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'NONE');
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5' });
+      pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 148, undefined, 'NONE');
       const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
       pdf.save(`嘜頭_${safeVendor}.pdf`);
     }
