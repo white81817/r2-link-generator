@@ -2814,7 +2814,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               }
             }
           } else {
-            // 媽咪愛: col 2=商品貨號, col 3=可購買量
+            // 媽咪愛: col 2=商品貨號, col 4=客訂數, col 6=備貨量
+            // 備貨量 = max(0, ERP可用庫存 - 客訂數)
             for (let i = 1; i < rows.length; i++) {
               const row = rows[i];
               const code = String(row[2] || '').trim();
@@ -2829,7 +2830,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 stock = erpProductCodeMap[code];      // 3. 商品編號
               }
               if (stock !== null) {
-                rows[i][3] = stock;
+                const customerOrders = Number(rows[i][4]) || 0;
+                rows[i][6] = Math.max(0, stock - customerOrders);
                 updated++;
               } else {
                 unmatched++;
