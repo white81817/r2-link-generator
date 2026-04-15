@@ -1733,7 +1733,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const A4W = 794, A4H = 1122;
       const markDiv = document.createElement('div');
       markDiv.style.cssText = `
-        position:fixed; left:-9999px; top:0;
+        position:absolute; left:-9999px; top:0;
         width:${A4W}px; height:${A4H}px;
         background:white; font-family:sans-serif;
         box-sizing:border-box; padding:48px 60px;
@@ -1788,6 +1788,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       `;
 
       document.body.appendChild(markDiv);
+      // 等瀏覽器完成 render 再截圖
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       try {
         const { jsPDF } = window.jspdf;
@@ -1795,7 +1797,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
         const dataUrl = await domtoimage.toPng(markDiv, {
           width: A4W, height: A4H,
-          style: { transform: 'scale(1)', 'transform-origin': 'top left' },
           quality: 1.0
         });
 
