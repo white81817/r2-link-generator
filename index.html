@@ -233,6 +233,7 @@
     <button class="tab-btn active" onclick="switchTab('link')">🔗 連結產生器</button>
     <button class="tab-btn" onclick="switchTab('label')">🏷️ 標籤產生器</button>
     <button class="tab-btn" onclick="switchTab('product')">📦 產品建立</button>
+    <button class="tab-btn" onclick="switchTab('stock')">🔄 刷庫存</button>
   </div>
 
   <!-- ========== 連結產生器 ========== -->
@@ -477,7 +478,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
   <!-- =================== 分頁切換腳本 =================== -->
   <script>
-    const TAB_IDS = ['link', 'label', 'product'];
+    const TAB_IDS = ['link', 'label', 'product', 'stock'];
     function switchTab(tab) {
       TAB_IDS.forEach(id => {
         document.getElementById('tab-' + id).style.display = (id === tab) ? 'block' : 'none';
@@ -2438,6 +2439,309 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       variantRowCount = 0;
       addVariantRow();
       renderSavedList();
+    }
+  </script>
+
+  <!-- =================== 刷庫存 Tab =================== -->
+  <div id="tab-stock" style="display:none" class="bg-gray-50 min-h-screen">
+    <div class="max-w-5xl mx-auto py-8 px-4">
+      <h1 class="text-2xl font-bold text-gray-800 mb-6">🔄 刷庫存</h1>
+
+      <!-- Step 1: Import ERP data -->
+      <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h2 class="text-lg font-semibold text-gray-700 mb-4">Step 1｜匯入 ERP 資料</h2>
+        <div class="flex flex-wrap gap-6">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">ERP 單商品資料（xlsx）</label>
+            <input type="file" id="erpSingleFile" accept=".xlsx,.xls" class="block text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">ERP 複合商品資料（xlsx）</label>
+            <input type="file" id="erpCompositeFile" accept=".xlsx,.xls" class="block text-sm">
+          </div>
+        </div>
+        <button onclick="parseErpData()" class="mt-4 bg-blue-600 text-white py-2 px-5 rounded-lg hover:bg-blue-700 font-medium">解析 ERP 資料</button>
+        <div id="erpStatus" class="mt-3 text-sm text-gray-600"></div>
+      </div>
+
+      <!-- ERP results summary -->
+      <div id="erpResults" class="mb-6 hidden">
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div class="bg-white p-4 rounded-lg shadow text-center">
+            <div class="text-3xl font-bold text-blue-600" id="erpSingleCount">0</div>
+            <div class="text-sm text-gray-500 mt-1">單商品（真商品編號）</div>
+          </div>
+          <div class="bg-white p-4 rounded-lg shadow text-center">
+            <div class="text-3xl font-bold text-indigo-600" id="erpCompositeCount">0</div>
+            <div class="text-sm text-gray-500 mt-1">複合商品（可湊組數）</div>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+            <span class="font-semibold text-gray-700">複合商品庫存（由低到高）</span>
+            <span class="text-xs text-gray-400">根據組件最低可用庫存計算</span>
+          </div>
+          <div class="overflow-auto max-h-64">
+            <table class="w-full text-sm">
+              <thead><tr class="bg-gray-100 text-gray-600">
+                <th class="text-left px-4 py-2">複合編號</th>
+                <th class="text-right px-4 py-2">可湊組數</th>
+                <th class="text-left px-4 py-2 text-xs text-gray-400">瓶頸組件</th>
+              </tr></thead>
+              <tbody id="compositeStockTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Update platform -->
+      <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold text-gray-700 mb-4">Step 2｜更新平台庫存</h2>
+        <p class="text-sm text-gray-500 mb-4">請先完成 Step 1 解析 ERP 資料，再匯入平台檔案進行庫存更新。</p>
+        <div class="flex flex-wrap gap-6">
+          <div class="flex-1 min-w-64 border rounded-lg p-4">
+            <div class="font-semibold text-gray-700 mb-2">🌐 官網（1shop）</div>
+            <label class="block text-sm font-bold text-gray-600 mb-1">平台商品資料（xlsx）</label>
+            <input type="file" id="websiteFile" accept=".xlsx,.xls" class="block text-sm mb-3">
+            <button onclick="updatePlatform('website')" class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 text-sm font-medium w-full">更新官網庫存並匯出</button>
+            <div id="websiteStatus" class="mt-2 text-sm text-gray-600"></div>
+          </div>
+          <div class="flex-1 min-w-64 border rounded-lg p-4">
+            <div class="font-semibold text-gray-700 mb-2">👶 媽咪愛</div>
+            <label class="block text-sm font-bold text-gray-600 mb-1">平台商品資料（xlsx）</label>
+            <input type="file" id="mamyFile" accept=".xlsx,.xls" class="block text-sm mb-3">
+            <button onclick="updatePlatform('mamy')" class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 text-sm font-medium w-full">更新媽咪愛庫存並匯出</button>
+            <div id="mamyStatus" class="mt-2 text-sm text-gray-600"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== 刷庫存腳本 =================== -->
+  <script>
+    // Global ERP maps
+    // erpSingleMap: { 真商品編號 -> availableStock }
+    // erpCompositeMap: { 複合編號 -> { sets, bottleneckCode, bottleneckStock } }
+    let erpSingleMap = {};
+    let erpCompositeMap = {};
+    let erpLoaded = false;
+
+    function parseErpData() {
+      const singleFile = document.getElementById('erpSingleFile').files[0];
+      const compositeFile = document.getElementById('erpCompositeFile').files[0];
+      if (!singleFile && !compositeFile) {
+        document.getElementById('erpStatus').textContent = '請選擇至少一個 ERP 檔案。';
+        return;
+      }
+      const status = document.getElementById('erpStatus');
+      status.textContent = '解析中…';
+      erpSingleMap = {};
+      erpCompositeMap = {};
+
+      const promises = [];
+
+      if (singleFile) {
+        promises.push(new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => {
+            try {
+              const wb = XLSX.read(e.target.result, { type: 'array' });
+              // Find 商品資料 sheet or first sheet
+              const sheetName = wb.SheetNames.find(n => n.includes('商品資料')) || wb.SheetNames[0];
+              const ws = wb.Sheets[sheetName];
+              const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+              let count = 0;
+              for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const productCode = String(row[0] || '').trim();
+                const barcode = String(row[19] || '').trim();
+                const stockRaw = row[20];
+                const stock = Number(stockRaw) || 0;
+                if (!productCode) continue;
+                // 真商品編號 rule: barcode if present, else productCode
+                const trueCode = barcode ? barcode : productCode;
+                // Keep highest stock if duplicate
+                if (!(trueCode in erpSingleMap) || stock > erpSingleMap[trueCode]) {
+                  erpSingleMap[trueCode] = stock;
+                }
+                count++;
+              }
+              resolve(count);
+            } catch(err) { reject(err); }
+          };
+          reader.readAsArrayBuffer(singleFile);
+        }));
+      }
+
+      if (compositeFile) {
+        promises.push(new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => {
+            try {
+              const wb = XLSX.read(e.target.result, { type: 'array' });
+              const ws = wb.Sheets[wb.SheetNames[0]];
+              const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+              // Group by col 0 (複合編號)
+              // col 9 = 組件商品編號, col 10 = 組件品項條碼
+              const groups = {}; // compositeCode -> [ {trueCode, qty} aggregated ]
+              for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const compositeCode = String(row[0] || '').trim();
+                const compProductCode = String(row[9] || '').trim();
+                const compBarcode = String(row[10] || '').trim();
+                if (!compositeCode || !compProductCode) continue;
+                const trueCode = compBarcode ? compBarcode : compProductCode;
+                if (!groups[compositeCode]) groups[compositeCode] = {};
+                groups[compositeCode][trueCode] = (groups[compositeCode][trueCode] || 0) + 1;
+              }
+              // Calculate sets for each composite
+              let count = 0;
+              for (const [compositeCode, components] of Object.entries(groups)) {
+                let minSets = Infinity;
+                let bottleneckCode = '';
+                let bottleneckStock = 0;
+                for (const [trueCode, qty] of Object.entries(components)) {
+                  const available = erpSingleMap[trueCode] !== undefined ? erpSingleMap[trueCode] : 0;
+                  const sets = Math.floor(available / qty);
+                  if (sets < minSets) {
+                    minSets = sets;
+                    bottleneckCode = trueCode;
+                    bottleneckStock = available;
+                  }
+                }
+                erpCompositeMap[compositeCode] = {
+                  sets: minSets === Infinity ? 0 : minSets,
+                  bottleneckCode,
+                  bottleneckStock
+                };
+                count++;
+              }
+              resolve(count);
+            } catch(err) { reject(err); }
+          };
+          reader.readAsArrayBuffer(compositeFile);
+        }));
+      }
+
+      Promise.all(promises).then(counts => {
+        erpLoaded = true;
+        renderErpResults();
+        const singleCount = Object.keys(erpSingleMap).length;
+        const compositeCount = Object.keys(erpCompositeMap).length;
+        status.textContent = `✅ 解析完成｜單商品 ${singleCount} 筆，複合商品 ${compositeCount} 筆`;
+      }).catch(err => {
+        status.textContent = '❌ 解析失敗：' + err.message;
+      });
+    }
+
+    function renderErpResults() {
+      const singleCount = Object.keys(erpSingleMap).length;
+      const compositeCount = Object.keys(erpCompositeMap).length;
+      document.getElementById('erpSingleCount').textContent = singleCount;
+      document.getElementById('erpCompositeCount').textContent = compositeCount;
+
+      // Sort composite by sets ascending
+      const sorted = Object.entries(erpCompositeMap).sort((a, b) => a[1].sets - b[1].sets);
+      const tbody = document.getElementById('compositeStockTable');
+      tbody.innerHTML = '';
+      sorted.forEach(([code, info]) => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t hover:bg-gray-50';
+        const setsColor = info.sets === 0 ? 'text-red-600 font-bold' : info.sets < 5 ? 'text-yellow-600 font-semibold' : 'text-gray-800';
+        tr.innerHTML = `
+          <td class="px-4 py-2 font-mono text-gray-700">${code}</td>
+          <td class="px-4 py-2 text-right ${setsColor}">${info.sets}</td>
+          <td class="px-4 py-2 text-xs text-gray-400">${info.bottleneckCode} (庫存${info.bottleneckStock})</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('erpResults').classList.remove('hidden');
+    }
+
+    function updatePlatform(type) {
+      if (!erpLoaded || (Object.keys(erpSingleMap).length === 0 && Object.keys(erpCompositeMap).length === 0)) {
+        alert('請先完成 Step 1 解析 ERP 資料。');
+        return;
+      }
+      const fileInput = document.getElementById(type === 'website' ? 'websiteFile' : 'mamyFile');
+      const statusEl = document.getElementById(type === 'website' ? 'websiteStatus' : 'mamyStatus');
+      if (!fileInput.files[0]) {
+        statusEl.textContent = '請選擇平台商品資料檔案。';
+        return;
+      }
+      statusEl.textContent = '處理中…';
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+          let matched = 0, unmatched = 0, updated = 0;
+
+          if (type === 'website') {
+            // 官網: col 1=類型, col 13=貨號, col 16=現貨數量
+            // Only update rows where col 1 === '子項'
+            for (let i = 1; i < rows.length; i++) {
+              const row = rows[i];
+              const rowType = String(row[1] || '').trim();
+              if (rowType !== '子項') continue;
+              const code = String(row[13] || '').trim();
+              if (!code) continue;
+              matched++;
+              let stock = null;
+              if (erpSingleMap[code] !== undefined) {
+                stock = erpSingleMap[code];
+              } else if (erpCompositeMap[code] !== undefined) {
+                stock = erpCompositeMap[code].sets;
+              }
+              if (stock !== null) {
+                rows[i][16] = stock;
+                updated++;
+              } else {
+                unmatched++;
+              }
+            }
+          } else {
+            // 媽咪愛: col 2=商品貨號, col 3=可購買量
+            for (let i = 1; i < rows.length; i++) {
+              const row = rows[i];
+              const code = String(row[2] || '').trim();
+              if (!code) continue;
+              matched++;
+              let stock = null;
+              if (erpSingleMap[code] !== undefined) {
+                stock = erpSingleMap[code];
+              } else if (erpCompositeMap[code] !== undefined) {
+                stock = erpCompositeMap[code].sets;
+              }
+              if (stock !== null) {
+                rows[i][3] = stock;
+                updated++;
+              } else {
+                unmatched++;
+              }
+            }
+          }
+
+          // Export updated file
+          const newWs = XLSX.utils.aoa_to_sheet(rows);
+          const newWb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(newWb, newWs, wb.SheetNames[0]);
+          const platformName = type === 'website' ? '官網' : '媽咪愛';
+          const today = new Date();
+          const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+          XLSX.writeFile(newWb, `${platformName}_庫存更新_${dateStr}.xlsx`);
+
+          statusEl.innerHTML = `✅ 完成匯出｜比對 ${matched} 筆，更新 <strong>${updated}</strong> 筆，未找到 ${unmatched} 筆`;
+        } catch(err) {
+          statusEl.textContent = '❌ 處理失敗：' + err.message;
+        }
+      };
+      reader.readAsArrayBuffer(fileInput.files[0]);
     }
   </script>
 </body>
