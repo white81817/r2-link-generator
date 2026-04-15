@@ -284,6 +284,19 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <p class="text-gray-600">標籤尺寸：60mm x 40mm</p>
       </div>
 
+      <!-- ========== 採購單匯入區塊 ========== -->
+      <div class="bg-white p-6 rounded-lg shadow-md mb-8 no-print">
+        <h2 class="text-xl font-semibold mb-4 text-gray-700">📦 採購單匯入 → 按廠商產生標籤 &amp; 嘜頭</h2>
+        <div class="flex flex-wrap items-end gap-4 mb-4">
+          <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">匯入採購報表（xlsx）</label>
+            <input type="file" id="poFile" accept=".xlsx,.xls" class="block">
+          </div>
+          <button onclick="processPoFile()" class="bg-indigo-600 text-white py-2 px-5 rounded-lg hover:bg-indigo-700 font-medium">解析採購單</button>
+        </div>
+        <div id="poResults" class="space-y-6"></div>
+      </div>
+
       <!-- 商品/廠商資料管理區塊 -->
       <div class="bg-white p-6 rounded-lg shadow-md mb-8">
         <h2 class="text-xl font-semibold mb-4 text-gray-700">商品/廠商資料管理</h2>
@@ -1523,6 +1536,279 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const labelContainer = document.querySelector('#tab-label .container');
       if (labelContainer) labelContainer.appendChild(footer);
     });
+
+    // ===== 採購單匯入功能 =====
+    let poData = {}; // { 廠商名稱: { items: [...] } }
+
+    async function processPoFile() {
+      const file = document.getElementById('poFile').files[0];
+      if (!file) { alert('請選擇採購報表檔案！'); return; }
+      try {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const ws = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        // 找 header row（第一列）
+        const headerRow = rows[0] || [];
+        // 欄位索引
+        const colIdx = {
+          orderNo: headerRow.indexOf('叫貨單號'),
+          name:    headerRow.indexOf('商品名稱'),
+          style:   headerRow.indexOf('樣式'),
+          size:    headerRow.indexOf('尺寸'),
+          code:    headerRow.indexOf('商品編號'),
+          barcode: headerRow.indexOf('品項條碼'),
+          qty:     headerRow.indexOf('叫貨數量'),
+          vendor:  headerRow.indexOf('廠商'),
+        };
+
+        poData = {};
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          if (!r || !r[colIdx.vendor] || !r[colIdx.name]) continue;
+          const vendor  = String(r[colIdx.vendor] || '').trim();
+          const orderNo = String(r[colIdx.orderNo] || '').trim();
+          const name    = String(r[colIdx.name]    || '').trim();
+          const style   = String(r[colIdx.style]   || '').trim();
+          const size    = String(r[colIdx.size]    || '').trim();
+          const code    = String(r[colIdx.code]    || '').trim();
+          const barcode = String(r[colIdx.barcode] || '').trim();
+          const qty     = parseInt(r[colIdx.qty])  || 0;
+
+          if (!poData[vendor]) poData[vendor] = { items: [], orderNos: new Set() };
+          poData[vendor].items.push({ orderNo, name, style, size, code, barcode, qty });
+          poData[vendor].orderNos.add(orderNo);
+        }
+
+        renderPoVendors();
+      } catch (e) {
+        alert('解析失敗：' + e.message);
+        console.error(e);
+      }
+    }
+
+    function renderPoVendors() {
+      const container = document.getElementById('poResults');
+      const vendors = Object.keys(poData);
+      if (vendors.length === 0) {
+        container.innerHTML = '<div class="text-gray-400">未找到資料，請確認檔案格式</div>';
+        return;
+      }
+
+      container.innerHTML = vendors.map((vendor, vi) => {
+        const { items, orderNos } = poData[vendor];
+        const totalQty = items.reduce((s, it) => s + it.qty, 0);
+        const rows = items.map(it => `
+          <tr class="border-b">
+            <td class="py-1 pr-3 text-sm">${it.name}</td>
+            <td class="py-1 pr-3 text-sm text-gray-500">${it.style}${it.size ? ' / '+it.size : ''}</td>
+            <td class="py-1 pr-3 text-sm font-mono text-xs">${it.code}</td>
+            <td class="py-1 text-sm text-right font-semibold">${it.qty}</td>
+          </tr>`).join('');
+
+        return `
+        <div class="border rounded-lg p-4 bg-gray-50">
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div>
+              <div class="font-bold text-gray-800 text-base">${vendor}</div>
+              <div class="text-xs text-gray-500 mt-0.5">叫貨單：${[...orderNos].join('、')} ／ 共 ${items.length} 品項 ／ 合計 ${totalQty} 件</div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-1 text-sm">
+                <span class="text-gray-600">第</span>
+                <input type="number" id="poBox_${vi}" min="1" value="1" class="w-14 border rounded px-2 py-1 text-center text-sm">
+                <span class="text-gray-600">箱 / 共</span>
+                <input type="number" id="poBoxTotal_${vi}" min="1" value="1" class="w-14 border rounded px-2 py-1 text-center text-sm">
+                <span class="text-gray-600">箱</span>
+              </div>
+              <button onclick="exportPoLabelsPDF('${vendor.replace(/'/g,"\\'")}', ${vi})"
+                class="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium">
+                ⬇ 商品標籤 PDF
+              </button>
+              <button onclick="exportPoMarkPDF('${vendor.replace(/'/g,"\\'")}', ${vi})"
+                class="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-sm font-medium">
+                ⬇ 嘜頭 PDF（A4）
+              </button>
+            </div>
+          </div>
+          <table class="w-full">
+            <thead><tr class="border-b text-xs text-gray-500 font-medium">
+              <th class="text-left py-1 pr-3">商品名稱</th>
+              <th class="text-left py-1 pr-3">樣式/尺寸</th>
+              <th class="text-left py-1 pr-3">商品編號</th>
+              <th class="text-right py-1">叫貨數量</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      }).join('');
+    }
+
+    async function exportPoLabelsPDF(vendor, vi) {
+      const { items } = poData[vendor];
+      if (!items || items.length === 0) { alert('無資料'); return; }
+
+      // 建立暫時容器
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'fixed';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '0';
+      document.body.appendChild(tempDiv);
+
+      const labelRefs = [];
+      for (const it of items) {
+        if (!it.barcode) continue;
+        let displayText = it.name;
+        if (it.style) displayText += ` - ${it.style}`;
+        if (it.size)  displayText += ` - ${it.size}`;
+        const { box, svg } = createLabelElement(displayText, it.barcode);
+        tempDiv.appendChild(box);
+        JsBarcode(svg).init();
+        labelRefs.push({ box, qty: it.qty });
+      }
+
+      if (labelRefs.length === 0) {
+        document.body.removeChild(tempDiv);
+        alert('所有品項都缺少品項條碼，無法產生標籤');
+        return;
+      }
+
+      try {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [LABEL_WIDTH, LABEL_HEIGHT], hotfixes: ['px_scaling'] });
+        const scale = 3;
+        const width  = Math.floor(226 * scale);
+        const height = Math.floor(151 * scale);
+        let pageCount = 0;
+
+        for (const { box, qty } of labelRefs) {
+          const labelBox = box.querySelector('.label-box');
+          const btn = labelBox.querySelector('button');
+          if (btn) btn.style.display = 'none';
+          labelBox.style.margin = '0';
+          labelBox.style.border = 'none';
+          labelBox.style.backgroundColor = 'white';
+
+          const dataUrl = await domtoimage.toPng(labelBox, {
+            width, height,
+            style: { margin: '0', padding: '3mm', transform: `scale(${scale})`, 'transform-origin': 'top left' },
+            quality: 1.0
+          });
+
+          for (let j = 0; j < qty; j++) {
+            if (pageCount > 0) pdf.addPage([LABEL_WIDTH, LABEL_HEIGHT], 'landscape');
+            pdf.addImage(dataUrl, 'PNG', 0, 0, LABEL_WIDTH, LABEL_HEIGHT, undefined, 'NONE');
+            pageCount++;
+          }
+        }
+
+        const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
+        pdf.save(`商品標籤_${safeVendor}.pdf`);
+      } catch (e) {
+        alert('PDF 產生失敗：' + e.message);
+        console.error(e);
+      } finally {
+        document.body.removeChild(tempDiv);
+      }
+    }
+
+    async function exportPoMarkPDF(vendor, vi) {
+      const { items, orderNos } = poData[vendor];
+      if (!items || items.length === 0) { alert('無資料'); return; }
+
+      const boxNum   = parseInt(document.getElementById(`poBox_${vi}`).value) || 1;
+      const boxTotal = parseInt(document.getElementById(`poBoxTotal_${vi}`).value) || 1;
+
+      // 合計相同商品名稱＋樣式＋尺寸的數量（匯總顯示）
+      const merged = {};
+      for (const it of items) {
+        const key = `${it.name}|||${it.style}|||${it.size}|||${it.code}`;
+        if (!merged[key]) merged[key] = { name: it.name, style: it.style, size: it.size, code: it.code, qty: 0 };
+        merged[key].qty += it.qty;
+      }
+      const mergedItems = Object.values(merged);
+
+      // 建立 A4 DOM 元素 (794 x 1122 px = 210mm x 297mm @ 96dpi)
+      const A4W = 794, A4H = 1122;
+      const markDiv = document.createElement('div');
+      markDiv.style.cssText = `
+        position:fixed; left:-9999px; top:0;
+        width:${A4W}px; height:${A4H}px;
+        background:white; font-family:sans-serif;
+        box-sizing:border-box; padding:48px 60px;
+        display:flex; flex-direction:column;
+      `;
+
+      // 叫貨單號列表
+      const orderStr = [...orderNos].join('、');
+
+      // 商品列
+      const rowsHTML = mergedItems.map((it, i) => `
+        <tr style="background:${i%2===0?'#f9fafb':'white'}">
+          <td style="border:1px solid #ccc; padding:10px 14px; font-size:15px;">${it.name}</td>
+          <td style="border:1px solid #ccc; padding:10px 14px; font-size:15px; color:#555;">${[it.style, it.size].filter(Boolean).join(' / ')}</td>
+          <td style="border:1px solid #ccc; padding:10px 14px; font-size:14px; font-family:monospace;">${it.code}</td>
+          <td style="border:1px solid #ccc; padding:10px 14px; font-size:16px; font-weight:bold; text-align:right;">${it.qty}</td>
+        </tr>`).join('');
+
+      markDiv.innerHTML = `
+        <div style="text-align:center; font-size:26px; font-weight:bold; letter-spacing:2px; margin-bottom:20px; color:#111;">
+          叫貨單內容物
+        </div>
+        <div style="font-size:16px; color:#555; margin-bottom:8px;">叫貨單號：${orderStr}</div>
+        <div style="font-size:20px; font-weight:bold; margin-bottom:20px; color:#222; padding-bottom:12px; border-bottom:2px solid #333;">
+          廠商：${vendor}
+        </div>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:auto;">
+          <thead>
+            <tr style="background:#e5e7eb;">
+              <th style="border:1px solid #ccc; padding:10px 14px; text-align:left; font-size:15px;">商品名稱</th>
+              <th style="border:1px solid #ccc; padding:10px 14px; text-align:left; font-size:15px; width:140px;">樣式/尺寸</th>
+              <th style="border:1px solid #ccc; padding:10px 14px; text-align:left; font-size:15px; width:130px;">商品編號</th>
+              <th style="border:1px solid #ccc; padding:10px 14px; text-align:right; font-size:15px; width:80px;">數量</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHTML}</tbody>
+        </table>
+        <div style="
+          margin-top:32px;
+          border:4px solid #111;
+          border-radius:8px;
+          text-align:center;
+          padding:28px 20px;
+          font-size:72px;
+          font-weight:900;
+          letter-spacing:4px;
+          color:#111;
+          line-height:1.1;
+        ">
+          第 ${boxNum} 箱 / 共 ${boxTotal} 箱
+        </div>
+      `;
+
+      document.body.appendChild(markDiv);
+
+      try {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', hotfixes: ['px_scaling'] });
+
+        const dataUrl = await domtoimage.toPng(markDiv, {
+          width: A4W, height: A4H,
+          style: { transform: 'scale(1)', 'transform-origin': 'top left' },
+          quality: 1.0
+        });
+
+        pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'NONE');
+        const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
+        pdf.save(`嘜頭_${safeVendor}_第${boxNum}箱.pdf`);
+      } catch (e) {
+        alert('嘜頭 PDF 產生失敗：' + e.message);
+        console.error(e);
+      } finally {
+        document.body.removeChild(markDiv);
+      }
+    }
   </script>
 
 
