@@ -1615,13 +1615,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               <div class="text-xs text-gray-500 mt-0.5">叫貨單：${[...orderNos].join('、')} ／ 共 ${items.length} 品項 ／ 合計 ${totalQty} 件</div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <div class="flex items-center gap-1 text-sm">
-                <span class="text-gray-600">第</span>
-                <input type="number" id="poBox_${vi}" min="1" value="1" class="w-14 border rounded px-2 py-1 text-center text-sm">
-                <span class="text-gray-600">箱 / 共</span>
-                <input type="number" id="poBoxTotal_${vi}" min="1" value="1" class="w-14 border rounded px-2 py-1 text-center text-sm">
-                <span class="text-gray-600">箱</span>
-              </div>
               <button onclick="exportPoLabelsPDF('${vendor.replace(/'/g,"\\'")}', ${vi})"
                 class="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium">
                 ⬇ 商品標籤 PDF
@@ -1716,9 +1709,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     async function exportPoMarkPDF(vendor, vi) {
       const { items, orderNos } = poData[vendor];
       if (!items || items.length === 0) { alert('無資料'); return; }
-
-      const boxNum   = parseInt(document.getElementById(`poBox_${vi}`).value) || 1;
-      const boxTotal = parseInt(document.getElementById(`poBoxTotal_${vi}`).value) || 1;
 
       // 合計相同商品的數量
       const merged = {};
@@ -1816,18 +1806,49 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         drawRow([it.name, styleSize, it.code, it.qty], i % 2 === 0 ? '#f9fafb' : 'white', false);
       });
 
-      // 箱號大字區塊（距底部固定位置）
-      const BOX_H = 170;
+      // 箱號手寫區塊（距底部固定位置）
+      const BOX_H = 190;
       const BOX_Y = H - 52 - BOX_H;
 
+      // 外框
       ctx.strokeStyle = '#111';
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 3;
       ctx.strokeRect(PL, BOX_Y, CW, BOX_H);
 
-      ctx.font = 'bold 72px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#111';
-      ctx.fillText(`第 ${boxNum} 箱 / 共 ${boxTotal} 箱`, W / 2, BOX_Y + BOX_H / 2 + 26);
+      // 標籤文字
+      ctx.font = 'bold 18px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#555';
+      ctx.fillText('箱號（請出貨人員填寫）', PL + 16, BOX_Y + 28);
+
+      // 手寫格：「第 ___ 箱 / 共 ___ 箱」
+      const lineY = BOX_Y + BOX_H / 2 + 28;
+      const lineColor = '#333';
+      const lineLen = 160;
+
+      ctx.font = 'bold 46px sans-serif';
+      ctx.fillStyle = lineColor;
+      ctx.textAlign = 'left';
+
+      // 「第」
+      ctx.fillText('第', PL + 30, lineY);
+      // 底線1
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(PL + 85, lineY + 6);
+      ctx.lineTo(PL + 85 + lineLen, lineY + 6);
+      ctx.stroke();
+      // 「箱 / 共」
+      ctx.fillText('箱  /  共', PL + 85 + lineLen + 10, lineY);
+      // 底線2
+      const x2 = PL + 85 + lineLen + 10 + 170;
+      ctx.beginPath();
+      ctx.moveTo(x2, lineY + 6);
+      ctx.lineTo(x2 + lineLen, lineY + 6);
+      ctx.stroke();
+      // 「箱」
+      ctx.fillText('箱', x2 + lineLen + 10, lineY);
 
       // 輸出 PDF
       const dataUrl = canvas.toDataURL('image/png', 1.0);
