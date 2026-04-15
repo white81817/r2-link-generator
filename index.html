@@ -1942,7 +1942,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-bold text-gray-700 mb-1">產品說明</label>
-            <textarea id="p_description" rows="5" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="詳細商品描述..."></textarea>
+            <textarea id="p_description" rows="5" class="w-full border rounded px-2 py-1.5 text-sm">📐 詳細規格
+• 品項/規格：
+• 商品材質成分：
+• 商品尺寸：
+• 尺寸建議：
+• 商品重量：</textarea>
           </div>
         </div>
       </div>
@@ -2427,9 +2432,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function clearProductForm() {
       if (!confirm('確定要清除所有填寫的資料嗎？')) return;
-      ['p_code','p_name','p_vendor','p_highlight','p_description','p_preorder_note','p_tags_custom'].forEach(id => {
+      ['p_code','p_name','p_vendor','p_highlight','p_preorder_note','p_tags_custom'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
+      document.getElementById('p_description').value = '📐 詳細規格\n• 品項/規格：\n• 商品材質成分：\n• 商品尺寸：\n• 尺寸建議：\n• 商品重量：';
       document.getElementById('opt1_name').value = '樣式';
       document.getElementById('opt2_name').value = '尺寸';
       document.querySelectorAll('#p_tags .tag-cb').forEach(cb => cb.checked = false);
