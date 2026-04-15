@@ -2466,27 +2466,54 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       <!-- ERP results summary -->
       <div id="erpResults" class="mb-6 hidden">
+        <!-- 摘要卡片 -->
         <div class="grid grid-cols-2 gap-4 mb-4">
-          <div class="bg-white p-4 rounded-lg shadow text-center">
+          <div class="bg-white p-4 rounded-lg shadow text-center cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all" onclick="switchErpView('single')" id="erpSingleCard">
             <div class="text-3xl font-bold text-blue-600" id="erpSingleCount">0</div>
             <div class="text-sm text-gray-500 mt-1">單商品（真商品編號）</div>
+            <div class="text-xs text-blue-400 mt-1">點擊查看清單</div>
           </div>
-          <div class="bg-white p-4 rounded-lg shadow text-center">
+          <div class="bg-white p-4 rounded-lg shadow text-center cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-all" onclick="switchErpView('composite')" id="erpCompositeCard">
             <div class="text-3xl font-bold text-indigo-600" id="erpCompositeCount">0</div>
             <div class="text-sm text-gray-500 mt-1">複合商品（可湊組數）</div>
+            <div class="text-xs text-indigo-400 mt-1">點擊查看清單</div>
           </div>
         </div>
+
+        <!-- 搜尋 + 表格區塊 -->
         <div class="bg-white rounded-lg shadow overflow-hidden">
-          <div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
-            <span class="font-semibold text-gray-700">複合商品庫存（由低到高）</span>
-            <span class="text-xs text-gray-400">根據組件最低可用庫存計算</span>
+          <!-- 搜尋列 + Tab 切換 -->
+          <div class="px-4 py-3 border-b bg-gray-50 flex flex-wrap items-center gap-3">
+            <div class="flex rounded overflow-hidden border text-sm">
+              <button id="erpTabSingle" onclick="switchErpView('single')"
+                class="px-4 py-1.5 bg-blue-500 text-white font-medium">單商品</button>
+              <button id="erpTabComposite" onclick="switchErpView('composite')"
+                class="px-4 py-1.5 bg-white text-gray-600 hover:bg-gray-100">複合商品</button>
+            </div>
+            <input type="text" id="erpSearch" oninput="filterErpTable()"
+              class="flex-1 min-w-40 border rounded px-3 py-1.5 text-sm"
+              placeholder="搜尋商品編號／條碼…">
+            <span id="erpSearchCount" class="text-xs text-gray-400"></span>
           </div>
-          <div class="overflow-auto max-h-64">
+
+          <!-- 單商品表格 -->
+          <div id="erpSingleView" class="overflow-auto max-h-80">
             <table class="w-full text-sm">
-              <thead><tr class="bg-gray-100 text-gray-600">
+              <thead><tr class="bg-gray-100 text-gray-600 sticky top-0">
+                <th class="text-left px-4 py-2">真商品編號（條碼 / 商品編號）</th>
+                <th class="text-right px-4 py-2 w-28">可用庫存</th>
+              </tr></thead>
+              <tbody id="singleStockTable"></tbody>
+            </table>
+          </div>
+
+          <!-- 複合商品表格 -->
+          <div id="erpCompositeView" class="overflow-auto max-h-80 hidden">
+            <table class="w-full text-sm">
+              <thead><tr class="bg-gray-100 text-gray-600 sticky top-0">
                 <th class="text-left px-4 py-2">複合編號</th>
-                <th class="text-right px-4 py-2">可湊組數</th>
-                <th class="text-left px-4 py-2 text-xs text-gray-400">瓶頸組件</th>
+                <th class="text-right px-4 py-2 w-28">可湊組數</th>
+                <th class="text-left px-4 py-2 text-xs text-gray-400">瓶頸組件（庫存）</th>
               </tr></thead>
               <tbody id="compositeStockTable"></tbody>
             </table>
@@ -2635,29 +2662,93 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       });
     }
 
+    // 目前顯示的是哪個 view
+    let erpCurrentView = 'single';
+
+    function switchErpView(view) {
+      erpCurrentView = view;
+      const isSingle = (view === 'single');
+      document.getElementById('erpSingleView').classList.toggle('hidden', !isSingle);
+      document.getElementById('erpCompositeView').classList.toggle('hidden', isSingle);
+      document.getElementById('erpTabSingle').className = isSingle
+        ? 'px-4 py-1.5 bg-blue-500 text-white font-medium'
+        : 'px-4 py-1.5 bg-white text-gray-600 hover:bg-gray-100';
+      document.getElementById('erpTabComposite').className = !isSingle
+        ? 'px-4 py-1.5 bg-indigo-500 text-white font-medium'
+        : 'px-4 py-1.5 bg-white text-gray-600 hover:bg-gray-100';
+      // Clear search and re-filter
+      document.getElementById('erpSearch').value = '';
+      filterErpTable();
+    }
+
+    function filterErpTable() {
+      const kw = document.getElementById('erpSearch').value.trim().toLowerCase();
+      let visible = 0;
+
+      if (erpCurrentView === 'single') {
+        const rows = document.querySelectorAll('#singleStockTable tr');
+        rows.forEach(tr => {
+          const match = !kw || tr.dataset.code.toLowerCase().includes(kw);
+          tr.style.display = match ? '' : 'none';
+          if (match) visible++;
+        });
+        document.getElementById('erpSearchCount').textContent =
+          kw ? `找到 ${visible} 筆` : `共 ${rows.length} 筆`;
+      } else {
+        const rows = document.querySelectorAll('#compositeStockTable tr');
+        rows.forEach(tr => {
+          const match = !kw || tr.dataset.code.toLowerCase().includes(kw);
+          tr.style.display = match ? '' : 'none';
+          if (match) visible++;
+        });
+        document.getElementById('erpSearchCount').textContent =
+          kw ? `找到 ${visible} 筆` : `共 ${rows.length} 筆`;
+      }
+    }
+
     function renderErpResults() {
       const singleCount = Object.keys(erpSingleMap).length;
       const compositeCount = Object.keys(erpCompositeMap).length;
       document.getElementById('erpSingleCount').textContent = singleCount;
       document.getElementById('erpCompositeCount').textContent = compositeCount;
 
-      // Sort composite by sets ascending
-      const sorted = Object.entries(erpCompositeMap).sort((a, b) => a[1].sets - b[1].sets);
-      const tbody = document.getElementById('compositeStockTable');
-      tbody.innerHTML = '';
-      sorted.forEach(([code, info]) => {
+      // ---- 單商品表格（由高到低排序）----
+      const sortedSingle = Object.entries(erpSingleMap).sort((a, b) => b[1] - a[1]);
+      const singleTbody = document.getElementById('singleStockTable');
+      singleTbody.innerHTML = '';
+      sortedSingle.forEach(([code, stock]) => {
         const tr = document.createElement('tr');
         tr.className = 'border-t hover:bg-gray-50';
+        tr.dataset.code = code;
+        const stockColor = stock === 0 ? 'text-red-500 font-bold' : stock < 5 ? 'text-yellow-600 font-semibold' : 'text-gray-800';
+        tr.innerHTML = `
+          <td class="px-4 py-2 font-mono text-gray-700">${code}</td>
+          <td class="px-4 py-2 text-right ${stockColor}">${stock}</td>
+        `;
+        singleTbody.appendChild(tr);
+      });
+
+      // ---- 複合商品表格（由低到高排序）----
+      const sortedComposite = Object.entries(erpCompositeMap).sort((a, b) => a[1].sets - b[1].sets);
+      const compositeTbody = document.getElementById('compositeStockTable');
+      compositeTbody.innerHTML = '';
+      sortedComposite.forEach(([code, info]) => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t hover:bg-gray-50';
+        tr.dataset.code = code;
         const setsColor = info.sets === 0 ? 'text-red-600 font-bold' : info.sets < 5 ? 'text-yellow-600 font-semibold' : 'text-gray-800';
         tr.innerHTML = `
           <td class="px-4 py-2 font-mono text-gray-700">${code}</td>
           <td class="px-4 py-2 text-right ${setsColor}">${info.sets}</td>
-          <td class="px-4 py-2 text-xs text-gray-400">${info.bottleneckCode} (庫存${info.bottleneckStock})</td>
+          <td class="px-4 py-2 text-xs text-gray-400">${info.bottleneckCode}（庫存 ${info.bottleneckStock}）</td>
         `;
-        tbody.appendChild(tr);
+        compositeTbody.appendChild(tr);
       });
 
       document.getElementById('erpResults').classList.remove('hidden');
+      // 預設顯示單商品（解析後重置到單商品 tab）
+      switchErpView('single');
+      filterErpTable();
     }
 
     function updatePlatform(type) {
