@@ -234,6 +234,7 @@
     <button class="tab-btn" onclick="switchTab('label')">🏷️ 標籤產生器</button>
     <button class="tab-btn" onclick="switchTab('product')">📦 產品建立</button>
     <button class="tab-btn" onclick="switchTab('stock')">🔄 刷庫存</button>
+    <button class="tab-btn" onclick="switchTab('order')">📋 訂單編號整理</button>
   </div>
 
   <!-- ========== 連結產生器 ========== -->
@@ -478,7 +479,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
   <!-- =================== 分頁切換腳本 =================== -->
   <script>
-    const TAB_IDS = ['link', 'label', 'product', 'stock'];
+    const TAB_IDS = ['link', 'label', 'product', 'stock', 'order'];
     function switchTab(tab) {
       TAB_IDS.forEach(id => {
         document.getElementById('tab-' + id).style.display = (id === tab) ? 'block' : 'none';
@@ -2950,6 +2951,105 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         }
       };
       reader.readAsArrayBuffer(fileInput.files[0]);
+    }
+  </script>
+
+  <!-- =================== 訂單編號整理 Tab =================== -->
+  <div id="tab-order" style="display:none" class="bg-gray-50 min-h-screen">
+    <div class="max-w-3xl mx-auto py-8 px-4">
+      <h1 class="text-2xl font-bold text-gray-800 mb-2">📋 訂單編號整理</h1>
+      <p class="text-sm text-gray-500 mb-6">支援逗號、換行、空白混合輸入，自動去除重複並整理輸出</p>
+
+      <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+        <label class="block text-sm font-bold text-gray-700 mb-2">貼入訂單編號</label>
+        <textarea id="orderInput" rows="8"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 resize-vertical"
+          placeholder="支援逗號、換行、空白任意混合，例如：&#10;1001, 1002&#10;1003 1004&#10;1005,1006"></textarea>
+        <div class="flex gap-3 mt-4 flex-wrap">
+          <button onclick="processOrders()"
+            class="bg-blue-600 text-white py-2 px-5 rounded-lg hover:bg-blue-700 font-medium text-sm">整理</button>
+          <button onclick="clearOrders()"
+            class="bg-gray-200 text-gray-700 py-2 px-5 rounded-lg hover:bg-gray-300 font-medium text-sm">清除</button>
+        </div>
+      </div>
+
+      <div id="orderResults" class="hidden">
+        <div class="grid grid-cols-2 gap-4">
+
+          <!-- 逗號分隔 -->
+          <div class="bg-white p-5 rounded-lg shadow-md flex flex-col">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="text-sm font-bold text-gray-700">逗號分隔</div>
+                <div class="text-xs text-gray-400 mt-0.5" id="orderCountComma"></div>
+              </div>
+              <button onclick="copyOrderResult('comma')"
+                id="copyCommaBtn"
+                class="text-xs bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1 rounded hover:bg-blue-100 font-medium transition-colors">
+                複製
+              </button>
+            </div>
+            <textarea id="orderOutputComma" readonly rows="10"
+              class="w-full flex-1 border border-gray-200 rounded px-3 py-2 text-xs font-mono bg-gray-50 resize-none focus:outline-none"></textarea>
+          </div>
+
+          <!-- 換行分隔 -->
+          <div class="bg-white p-5 rounded-lg shadow-md flex flex-col">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="text-sm font-bold text-gray-700">換行分隔</div>
+                <div class="text-xs text-gray-400 mt-0.5" id="orderCountNewline"></div>
+              </div>
+              <button onclick="copyOrderResult('newline')"
+                id="copyNewlineBtn"
+                class="text-xs bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1 rounded hover:bg-blue-100 font-medium transition-colors">
+                複製
+              </button>
+            </div>
+            <textarea id="orderOutputNewline" readonly rows="10"
+              class="w-full flex-1 border border-gray-200 rounded px-3 py-2 text-xs font-mono bg-gray-50 resize-none focus:outline-none"></textarea>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function processOrders() {
+      const raw = document.getElementById('orderInput').value;
+      const tokens = raw.split(/[\s,]+/).map(s => s.trim()).filter(s => s.length > 0);
+      const unique = [...new Set(tokens)];
+
+      document.getElementById('orderOutputComma').value = unique.join(',');
+      document.getElementById('orderOutputNewline').value = unique.join('\n');
+      document.getElementById('orderCountComma').textContent = unique.length + ' 筆';
+      document.getElementById('orderCountNewline').textContent = unique.length + ' 筆';
+      document.getElementById('orderResults').classList.remove('hidden');
+    }
+
+    function clearOrders() {
+      document.getElementById('orderInput').value = '';
+      document.getElementById('orderResults').classList.add('hidden');
+    }
+
+    function copyOrderResult(type) {
+      const el = document.getElementById(type === 'comma' ? 'orderOutputComma' : 'orderOutputNewline');
+      const btnId = type === 'comma' ? 'copyCommaBtn' : 'copyNewlineBtn';
+      navigator.clipboard.writeText(el.value).then(() => {
+        const btn = document.getElementById(btnId);
+        const orig = btn.textContent;
+        btn.textContent = '已複製！';
+        btn.classList.replace('text-blue-600', 'text-green-600');
+        btn.classList.replace('border-blue-200', 'border-green-200');
+        btn.classList.replace('bg-blue-50', 'bg-green-50');
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.replace('text-green-600', 'text-blue-600');
+          btn.classList.replace('border-green-200', 'border-blue-200');
+          btn.classList.replace('bg-green-50', 'bg-blue-50');
+        }, 1500);
+      });
     }
   </script>
 </body>
