@@ -487,7 +487,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.querySelectorAll('.tab-btn').forEach(function(btn, i) {
         btn.classList.toggle('active', TAB_IDS[i] === tab);
       });
+      const url = new URL(location.href);
+      url.searchParams.set('tab', tab);
+      history.replaceState(null, '', url);
     }
+
+    (function() {
+      const params = new URLSearchParams(location.search);
+      const tab = params.get('tab');
+      if (tab && TAB_IDS.includes(tab)) switchTab(tab);
+    })();
   </script>
 
   <!-- =================== 連結產生器腳本 =================== -->
