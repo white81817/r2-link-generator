@@ -492,11 +492,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       history.replaceState(null, '', url);
     }
 
-    (function() {
+    document.addEventListener('DOMContentLoaded', function() {
       const params = new URLSearchParams(location.search);
       const tab = params.get('tab');
       if (tab && TAB_IDS.includes(tab)) switchTab(tab);
-    })();
+    });
   </script>
 
   <!-- =================== 連結產生器腳本 =================== -->
