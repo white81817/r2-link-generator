@@ -1564,32 +1564,43 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const headerRow = rows[0] || [];
         // 欄位索引
         const colIdx = {
-          orderNo: headerRow.indexOf('叫貨單號'),
-          name:    headerRow.indexOf('商品名稱'),
-          style:   headerRow.indexOf('樣式'),
-          size:    headerRow.indexOf('尺寸'),
-          code:    headerRow.indexOf('商品編號'),
-          barcode: headerRow.indexOf('品項條碼'),
-          qty:     headerRow.indexOf('叫貨數量'),
-          vendor:  headerRow.indexOf('廠商'),
+          orderNo:      headerRow.indexOf('叫貨單號'),
+          createDate:   headerRow.indexOf('建立日期'),
+          deliveryDate: headerRow.indexOf('最晚交付日'),
+          status:       headerRow.indexOf('叫貨單狀態'),
+          orderNote:    headerRow.indexOf('叫貨單備註'),
+          name:         headerRow.indexOf('商品名稱'),
+          style:        headerRow.indexOf('樣式'),
+          size:         headerRow.indexOf('尺寸'),
+          code:         headerRow.indexOf('商品編號'),
+          barcode:      headerRow.indexOf('品項條碼'),
+          qty:          headerRow.indexOf('叫貨數量'),
+          vendor:       headerRow.indexOf('廠商'),
         };
 
         poData = {};
         for (let i = 1; i < rows.length; i++) {
           const r = rows[i];
           if (!r || !r[colIdx.vendor] || !r[colIdx.name]) continue;
-          const vendor  = String(r[colIdx.vendor] || '').trim();
-          const orderNo = String(r[colIdx.orderNo] || '').trim();
-          const name    = String(r[colIdx.name]    || '').trim();
-          const style   = String(r[colIdx.style]   || '').trim();
-          const size    = String(r[colIdx.size]    || '').trim();
-          const code    = String(r[colIdx.code]    || '').trim();
-          const barcode = String(r[colIdx.barcode] || '').trim();
-          const qty     = parseInt(r[colIdx.qty])  || 0;
+          const vendor       = String(r[colIdx.vendor]      || '').trim();
+          const orderNo      = String(r[colIdx.orderNo]     || '').trim();
+          const createDate   = String(r[colIdx.createDate]  || '').trim().split(' ')[0];
+          const deliveryDate = String(r[colIdx.deliveryDate]|| '').trim().split(' ')[0];
+          const status       = String(r[colIdx.status]      || '').trim();
+          const orderNote    = String(r[colIdx.orderNote]   || '').trim();
+          const name         = String(r[colIdx.name]        || '').trim();
+          const style        = String(r[colIdx.style]       || '').trim();
+          const size         = String(r[colIdx.size]        || '').trim();
+          const code         = String(r[colIdx.code]        || '').trim();
+          const barcode      = String(r[colIdx.barcode]     || '').trim();
+          const qty          = parseInt(r[colIdx.qty])      || 0;
 
-          if (!poData[vendor]) poData[vendor] = { items: [], orderNos: new Set() };
+          if (!poData[vendor]) poData[vendor] = { items: [], orderNos: new Set(), orderInfo: {} };
           poData[vendor].items.push({ orderNo, name, style, size, code, barcode, qty });
           poData[vendor].orderNos.add(orderNo);
+          if (!poData[vendor].orderInfo[orderNo]) {
+            poData[vendor].orderInfo[orderNo] = { createDate, deliveryDate, status, orderNote };
+          }
         }
 
         renderPoVendors();
@@ -1717,31 +1728,17 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
     }
 
-    async function exportPoMarkPDF(vendor, vi) {
-      const { items, orderNos } = poData[vendor];
-      if (!items || items.length === 0) { alert('無資料'); return; }
-
-      // 合計相同商品的數量
-      const merged = {};
-      for (const it of items) {
-        const key = `${it.name}|||${it.style}|||${it.size}|||${it.code}`;
-        if (!merged[key]) merged[key] = { name: it.name, style: it.style, size: it.size, code: it.code, qty: 0 };
-        merged[key].qty += it.qty;
-      }
-      const mergedItems = Object.values(merged);
-      const orderStr = [...orderNos].join('、');
-
+    function generateMarkCanvas(vendor, orderNo, info, mergedItems) {
       // A5 橫式 @96dpi: 794 x 559px
       const W = 794, H = 559;
       const PL = 40, PR = 40, PT = 26;
-      const CW = W - PL - PR; // 714px
+      const CW = W - PL - PR;
 
       const canvas = document.createElement('canvas');
       canvas.width = W;
       canvas.height = H;
       const ctx = canvas.getContext('2d');
 
-      // 背景
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, W, H);
 
@@ -1754,18 +1751,32 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       ctx.fillText('叫貨單內容物', W / 2, y + 20);
       y += 36;
 
-      // 叫貨單號
-      ctx.font = '12px sans-serif';
+      // 叫貨單號 + 廠商（並列）
+      ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#666';
-      ctx.fillText('叫貨單號：' + orderStr, PL, y);
-      y += 18;
-
-      // 廠商名稱
-      ctx.font = 'bold 16px sans-serif';
       ctx.fillStyle = '#222';
-      ctx.fillText('廠商：' + vendor, PL, y);
-      y += 13;
+      ctx.fillText('叫貨單號：' + orderNo + '　　廠商：' + vendor, PL, y);
+      y += 20;
+
+      // 最晚交付日
+      if (info.deliveryDate) {
+        ctx.font = '12px sans-serif';
+        ctx.fillStyle = '#888';
+        ctx.fillText('最晚交付日：' + info.deliveryDate, PL, y);
+        y += 18;
+      }
+
+      // 叫貨單備註
+      if (info.orderNote) {
+        ctx.font = '12px sans-serif';
+        ctx.fillStyle = '#888';
+        let note = info.orderNote;
+        const maxNoteW = CW - 10;
+        while (ctx.measureText('備註：' + note).width > maxNoteW && note.length > 1) note = note.slice(0, -1);
+        if (note !== info.orderNote) note += '…';
+        ctx.fillText('備註：' + note, PL, y);
+        y += 16;
+      }
 
       // 分隔線
       ctx.strokeStyle = '#333';
@@ -1776,7 +1787,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       y += 11;
 
       // 表格欄位寬度（合計 = CW = 714）
-      const colW = [CW - 130 - 108 - 56, 130, 108, 56]; // 名稱, 樣式/尺寸, 編號, 數量
+      const colW = [CW - 130 - 108 - 56, 130, 108, 56];
       const colX = [PL];
       colW.slice(0, -1).forEach((w, i) => colX.push(colX[i] + w));
       const ROW_H = 26;
@@ -1784,15 +1795,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const drawRow = (cells, bg, bold) => {
         ctx.fillStyle = bg;
         ctx.fillRect(PL, y, CW, ROW_H);
-
-        // 外框 & 垂直線
         ctx.strokeStyle = '#bbb';
         ctx.lineWidth = 1;
         ctx.strokeRect(PL, y, CW, ROW_H);
         colX.slice(1).forEach(x => {
           ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + ROW_H); ctx.stroke();
         });
-
         ctx.fillStyle = bold ? '#333' : '#222';
         ctx.font = (bold ? 'bold ' : '') + '12px sans-serif';
         cells.forEach((cell, i) => {
@@ -1808,10 +1816,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         y += ROW_H;
       };
 
-      // 表頭
       drawRow(['商品名稱', '樣式/尺寸', '商品編號', '數量'], '#e5e7eb', true);
-
-      // 資料列
       mergedItems.forEach((it, i) => {
         const styleSize = [it.style, it.size].filter(Boolean).join(' / ');
         drawRow([it.name, styleSize, it.code, it.qty], i % 2 === 0 ? '#f9fafb' : 'white', false);
@@ -1821,50 +1826,67 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const BOX_H = 104;
       const BOX_Y = H - 24 - BOX_H;
 
-      // 外框
       ctx.strokeStyle = '#111';
       ctx.lineWidth = 2;
       ctx.strokeRect(PL, BOX_Y, CW, BOX_H);
 
-      // 標籤文字
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = '#555';
       ctx.fillText('箱號（請出貨人員填寫）', PL + 12, BOX_Y + 20);
 
-      // 手寫格：「第 ___ 箱 / 共 ___ 箱」
       const lineY = BOX_Y + 72;
       const lineLen = 105;
 
       ctx.font = 'bold 32px sans-serif';
       ctx.fillStyle = '#333';
       ctx.textAlign = 'left';
-
-      // 「第」
       ctx.fillText('第', PL + 20, lineY);
-      // 底線1
       ctx.strokeStyle = '#444';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(PL + 58, lineY + 4);
       ctx.lineTo(PL + 58 + lineLen, lineY + 4);
       ctx.stroke();
-      // 「箱 / 共」
       ctx.fillText('箱  /  共', PL + 58 + lineLen + 8, lineY);
-      // 底線2
       const x2 = PL + 58 + lineLen + 8 + 118;
       ctx.beginPath();
       ctx.moveTo(x2, lineY + 4);
       ctx.lineTo(x2 + lineLen, lineY + 4);
       ctx.stroke();
-      // 「箱」
       ctx.fillText('箱', x2 + lineLen + 8, lineY);
 
-      // 輸出 PDF
-      const dataUrl = canvas.toDataURL('image/png', 1.0);
+      return canvas;
+    }
+
+    async function exportPoMarkPDF(vendor, vi) {
+      const { items, orderNos, orderInfo } = poData[vendor];
+      if (!items || items.length === 0) { alert('無資料'); return; }
+
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5' });
-      pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 148, undefined, 'NONE');
+      let pageCount = 0;
+
+      for (const orderNo of [...orderNos]) {
+        // 只取這筆叫貨單號的品項，並合計相同商品
+        const orderItems = items.filter(it => it.orderNo === orderNo);
+        const merged = {};
+        for (const it of orderItems) {
+          const key = `${it.name}|||${it.style}|||${it.size}|||${it.code}`;
+          if (!merged[key]) merged[key] = { name: it.name, style: it.style, size: it.size, code: it.code, qty: 0 };
+          merged[key].qty += it.qty;
+        }
+        const mergedItems = Object.values(merged);
+        const info = (orderInfo && orderInfo[orderNo]) || {};
+
+        const canvas = generateMarkCanvas(vendor, orderNo, info, mergedItems);
+        const dataUrl = canvas.toDataURL('image/png', 1.0);
+
+        if (pageCount > 0) pdf.addPage('a5', 'landscape');
+        pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 148, undefined, 'NONE');
+        pageCount++;
+      }
+
       const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
       pdf.save(`嘜頭_${safeVendor}.pdf`);
     }
