@@ -1637,9 +1637,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               <div class="text-xs text-gray-500 mt-0.5">叫貨單：${[...orderNos].join('、')} ／ 共 ${items.length} 品項 ／ 合計 ${totalQty} 件</div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <button onclick="exportPoLabelsPDF('${vendor.replace(/'/g,"\\'")}', ${vi})"
+              <button onclick="exportPoLabelsPDF('${vendor.replace(/'/g,"\\'")}', ${vi}, false)"
                 class="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium">
-                ⬇ 商品標籤 PDF
+                ⬇ 商品標籤 PDF（依數量）
+              </button>
+              <button onclick="exportPoLabelsPDF('${vendor.replace(/'/g,"\\'")}', ${vi}, true)"
+                class="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium">
+                ⬇ 商品標籤 PDF（每款1頁）
               </button>
               <button onclick="exportPoMarkPDF('${vendor.replace(/'/g,"\\'")}', ${vi})"
                 class="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-sm font-medium">
@@ -1660,7 +1664,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }).join('');
     }
 
-    async function exportPoLabelsPDF(vendor, vi) {
+    async function exportPoLabelsPDF(vendor, vi, onePerItem = false) {
       const { items } = poData[vendor];
       if (!items || items.length === 0) { alert('無資料'); return; }
 
@@ -1711,7 +1715,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             quality: 1.0
           });
 
-          for (let j = 0; j < qty; j++) {
+          const repeatCount = onePerItem ? 1 : qty;
+          for (let j = 0; j < repeatCount; j++) {
             if (pageCount > 0) pdf.addPage([LABEL_WIDTH, LABEL_HEIGHT], 'landscape');
             pdf.addImage(dataUrl, 'PNG', 0, 0, LABEL_WIDTH, LABEL_HEIGHT, undefined, 'NONE');
             pageCount++;
