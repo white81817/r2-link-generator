@@ -20,6 +20,30 @@ app.use('/api/*', cors({
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// ── Cache ─────────────────────────────────────────────────────────────────────
+// POST /api/cache  body: { key, value, ttl? }
+app.post('/api/cache', async (c) => {
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+
+  const { key, value, ttl } = body;
+  if (!key || value === undefined) return c.json({ error: '需要 key 與 value' }, 400);
+
+  await c.env.CACHE.put(key, JSON.stringify(value), { expirationTtl: ttl || 300 });
+  return c.json({ ok: true });
+});
+
+// GET /api/cache?key=mapping-12345
+app.get('/api/cache', async (c) => {
+  const key = c.req.query('key');
+  if (!key) return c.json({ error: '需要 key 參數' }, 400);
+
+  const v = await c.env.CACHE.get(key);
+  if (!v) return c.text('not found', 404);
+  return c.body(v, 200, { 'content-type': 'application/json' });
+});
+
 // ── Parse ERP ─────────────────────────────────────────────────────────────────
 // POST /api/parse-erp
 // FormData: single (xlsx, optional), composite (xlsx, optional)

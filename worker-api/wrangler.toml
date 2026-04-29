@@ -2,3 +2,7 @@ name = "didibox-api"
 main = "src/index.js"
 compatibility_date = "2025-04-29"
 account_id = "061be64b879c46136a4f12bf3792921d"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "ea7d1f4f4ab5463aa9829e34d7003efc"
