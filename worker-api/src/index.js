@@ -14,7 +14,7 @@ app.use('/api/*', cors({
   ],
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type'],
-  credentials: true,
+  credentials: false,
 }));
 
 // ── Health ────────────────────────────────────────────────────────────────────
