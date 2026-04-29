@@ -1,21 +1,25 @@
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import * as XLSX from 'xlsx';
 import { zipSync } from 'fflate';
 
-const app = new Hono();
-
 // ── CORS ──────────────────────────────────────────────────────────────────────
-app.use('/api/*', cors({
-  origin: [
-    'https://ec.mallbic.com',
-    'https://admin.1shop.tw',
-    'https://scm.mamilove.com.tw',
-  ],
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
-  allowHeaders: ['Content-Type'],
-  credentials: false,
-}));
+const ALLOWED_ORIGINS = [
+  'https://ec.mallbic.com',
+  'https://admin.1shop.tw',
+  'https://scm.mamilove.com.tw',
+];
+
+function corsHeaders(origin) {
+  if (!ALLOWED_ORIGINS.includes(origin)) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+const app = new Hono();
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
@@ -321,4 +325,20 @@ app.post('/api/gen-mamilove-update', async (c) => {
   });
 });
 
-export default app;
+// ── Fetch handler：外層 wrapper 確保 CORS 覆蓋所有 response ─────────────────
+export default {
+  async fetch(request, env, ctx) {
+    const origin = request.headers.get('Origin') || '';
+    const cors = corsHeaders(origin);
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: cors });
+    }
+
+    const response = await app.fetch(request, env, ctx);
+
+    const newHeaders = new Headers(response.headers);
+    Object.entries(cors).forEach(([k, v]) => newHeaders.set(k, v));
+    return new Response(response.body, { status: response.status, headers: newHeaders });
+  },
+};
