@@ -2715,14 +2715,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       erpBarcodeCanPreorder = {};
       erpProductCodeCanPreorder = {};
 
-      const promises = [];
-
-      if (singleFile) {
-        promises.push(new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = e => {
-            try {
-              const wb = XLSX.read(e.target.result, { type: 'array' });
+      const singlePromise = singleFile ? new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          try {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
               // Find 商品資料 sheet or first sheet
               const sheetName = wb.SheetNames.find(n => n.includes('商品資料')) || wb.SheetNames[0];
               const ws = wb.Sheets[sheetName];
@@ -2762,14 +2759,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             } catch(err) { reject(err); }
           };
           reader.readAsArrayBuffer(singleFile);
-        }));
-      }
+        }) : Promise.resolve(0);
 
-      if (compositeFile) {
-        promises.push(new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = e => {
-            try {
+      const compositePromise = compositeFile ? new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          try {
               const wb = XLSX.read(e.target.result, { type: 'array' });
               const ws = wb.Sheets[wb.SheetNames[0]];
               const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
@@ -2818,10 +2813,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             } catch(err) { reject(err); }
           };
           reader.readAsArrayBuffer(compositeFile);
-        }));
-      }
+        }) : Promise.resolve(0);
 
-      Promise.all(promises).then(counts => {
+      // 單品必須先跑完，複合商品計算才能正確查到 erpSingleMap
+      singlePromise.then(() => compositePromise).then(() => {
         erpLoaded = true;
         renderErpResults();
         const singleCount = Object.keys(erpSingleMap).length;
