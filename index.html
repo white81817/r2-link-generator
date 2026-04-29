@@ -2976,6 +2976,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 rows[i][17] = canPreorder ? 500 : 0;       // 預購數量
                 updated++;
               } else {
+                rows[i][16] = 0;                            // 比對不到：現貨歸零
+                rows[i][17] = 0;                            // 比對不到：預購歸零
                 unmatched++;
                 unmatchedCodes.push(code);
               }
