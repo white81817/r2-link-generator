@@ -649,6 +649,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
   <script>
     const LABEL_WIDTH = 60;
     const LABEL_HEIGHT = 40;
+    const WORKER_URL = ''; // 部署 Worker 後填入，例如 https://label-sticker-worker.xxx.workers.dev
     const DATA_VERSION = '1';
 
     function createMediumLabelElement(name, style, size, specNote, id, origin) {
@@ -1645,9 +1646,21 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 class="bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium">
                 ⬇ 商品標籤 PDF（每款1頁）
               </button>
+              <button onclick="exportPoLabelsPDF('${vendor.replace(/'/g,"\\'")}', ${vi}, false, true)"
+                class="bg-indigo-500 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-600 text-sm font-medium">
+                🔗 標籤連結（依數量）
+              </button>
+              <button onclick="exportPoLabelsPDF('${vendor.replace(/'/g,"\\'")}', ${vi}, true, true)"
+                class="bg-indigo-500 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-600 text-sm font-medium">
+                🔗 標籤連結（每款1頁）
+              </button>
               <button onclick="exportPoMarkPDF('${vendor.replace(/'/g,"\\'")}', ${vi})"
                 class="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 text-sm font-medium">
                 ⬇ 嘜頭 PDF（A5）
+              </button>
+              <button onclick="exportPoMarkPDF('${vendor.replace(/'/g,"\\'")}', ${vi}, true)"
+                class="bg-indigo-500 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-600 text-sm font-medium">
+                🔗 嘜頭連結
               </button>
             </div>
           </div>
@@ -1664,7 +1677,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }).join('');
     }
 
-    async function exportPoLabelsPDF(vendor, vi, onePerItem = false) {
+    async function exportPoLabelsPDF(vendor, vi, onePerItem = false, share = false) {
       const { items } = poData[vendor];
       if (!items || items.length === 0) { alert('無資料'); return; }
 
@@ -1724,7 +1737,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         }
 
         const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
-        pdf.save(`商品標籤_${safeVendor}.pdf`);
+        if (share) {
+          const blob = pdf.output('blob');
+          await uploadAndShowLink(blob, `商品標籤_${safeVendor}.pdf`);
+        } else {
+          pdf.save(`商品標籤_${safeVendor}.pdf`);
+        }
       } catch (e) {
         alert('PDF 產生失敗：' + e.message);
         console.error(e);
@@ -1864,7 +1882,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return canvas;
     }
 
-    async function exportPoMarkPDF(vendor, vi) {
+    async function exportPoMarkPDF(vendor, vi, share = false) {
       const { items, orderNos, orderInfo } = poData[vendor];
       if (!items || items.length === 0) { alert('無資料'); return; }
 
@@ -1893,7 +1911,59 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
 
       const safeVendor = vendor.replace(/[\\\/\:\*\?\"\<\>\|]/g, '_');
-      pdf.save(`嘜頭_${safeVendor}.pdf`);
+      if (share) {
+        const blob = pdf.output('blob');
+        await uploadAndShowLink(blob, `嘜頭_${safeVendor}.pdf`);
+      } else {
+        pdf.save(`嘜頭_${safeVendor}.pdf`);
+      }
+    }
+
+    async function uploadAndShowLink(blob, filename) {
+      if (!WORKER_URL) { alert('請先設定 WORKER_URL'); return; }
+      const loadingEl = document.createElement('div');
+      loadingEl.setAttribute('data-upload-loading', '');
+      loadingEl.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center"><div style="background:white;padding:24px 32px;border-radius:12px;font-size:14px;color:#374151">上傳中，請稍候…</div></div>`;
+      document.body.appendChild(loadingEl);
+      try {
+        const formData = new FormData();
+        formData.append('file', blob, filename);
+        const resp = await fetch(WORKER_URL + '/upload', { method: 'POST', body: formData });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const { url } = await resp.json();
+        document.body.removeChild(loadingEl);
+        showShareModal(url);
+      } catch (e) {
+        document.body.removeChild(loadingEl);
+        alert('上傳失敗：' + e.message);
+      }
+    }
+
+    function showShareModal(shareUrl) {
+      const modal = document.createElement('div');
+      modal.setAttribute('data-share-modal', '');
+      modal.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center">
+          <div style="background:white;padding:24px;border-radius:12px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+            <div style="font-size:16px;font-weight:600;color:#111827;margin-bottom:4px">分享連結</div>
+            <div style="font-size:12px;color:#9ca3af;margin-bottom:12px">連結 14 天後自動失效</div>
+            <input type="text" value="${shareUrl}" readonly
+              style="width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#374151;box-sizing:border-box;background:#f9fafb">
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+              <button id="copyShareBtn"
+                onclick="navigator.clipboard.writeText('${shareUrl}').then(()=>{this.textContent='已複製！';this.style.background='#059669'})"
+                style="padding:7px 16px;background:#4f46e5;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">
+                複製連結
+              </button>
+              <button onclick="this.closest('[data-share-modal]').remove()"
+                style="padding:7px 16px;background:#f3f4f6;color:#374151;border:none;border-radius:6px;cursor:pointer;font-size:13px">
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('input').select();
     }
   </script>
 

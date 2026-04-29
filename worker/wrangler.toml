@@ -1,0 +1,8 @@
+name = "label-sticker-worker"
+main = "src/index.js"
+compatibility_date = "2025-04-29"
+account_id = "061be64b879c46136a4f12bf3792921d"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "label-sticker"
