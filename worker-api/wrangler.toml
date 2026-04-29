@@ -1,0 +1,4 @@
+name = "didibox-api"
+main = "src/index.js"
+compatibility_date = "2025-04-29"
+account_id = "061be64b879c46136a4f12bf3792921d"

@@ -1,0 +1,14 @@
+{
+  "name": "didibox-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "xlsx": "^0.18.5",
+    "fflate": "^0.8.2"
+  }
+}
