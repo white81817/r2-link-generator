@@ -2176,7 +2176,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const marginEl = row.querySelector('.v-margin');
       if (sell && cost) {
-        const margin = (sell - cost - misc) / sell;
+        const customerFee = sell < 1000 ? 80 : 0;
+        const margin = (sell - cost - misc + customerFee) / (sell + customerFee);
         marginEl.value = (margin * 100).toFixed(1) + '%';
         marginEl.style.color = margin > 0.41 ? '#16a34a' : '#dc2626';
         marginEl.style.fontWeight = 'bold';
