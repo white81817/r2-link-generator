@@ -14,7 +14,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Quote-Token',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -323,6 +323,101 @@ app.post('/api/gen-mamilove-update', async (c) => {
     'Content-Type': 'application/zip',
     'Content-Disposition': `attachment; filename="mamilove_update_${ds}.zip"`,
   });
+});
+
+// ── Quote helpers ─────────────────────────────────────────────────────────────
+// 需在 Cloudflare 設定兩組 secret：QUOTE_PASSWORD（業務）、QUOTE_ADMIN_PASSWORD（主管）
+function validateQuoteToken(token, env) {
+  if (!token) return null;
+  if (env.QUOTE_ADMIN_PASSWORD && token === env.QUOTE_ADMIN_PASSWORD) return 'admin';
+  if (env.QUOTE_PASSWORD && token === env.QUOTE_PASSWORD) return 'user';
+  return null;
+}
+
+// POST /api/quotes/auth  body: { password }
+app.post('/api/quotes/auth', async (c) => {
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const role = validateQuoteToken(body.password, c.env);
+  if (!role) return c.json({ error: '密碼錯誤' }, 401);
+  return c.json({ role });
+});
+
+// POST /api/quotes  body: quote JSON
+app.post('/api/quotes', async (c) => {
+  const token = c.req.header('X-Quote-Token');
+  const role = validateQuoteToken(token, c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+
+  const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  const total = (body.items || []).reduce((s, it) => s + (Number(it.subtotal) || 0), 0);
+  const quote = {
+    id,
+    customerName: String(body.customerName || '').trim(),
+    customerNote: String(body.customerNote || '').trim(),
+    quoteDate: String(body.quoteDate || now.slice(0, 10)),
+    validUntil: String(body.validUntil || ''),
+    items: body.items || [],
+    note: String(body.note || '').trim(),
+    total,
+    createdAt: now,
+  };
+
+  await c.env.CACHE.put(`quote:${id}`, JSON.stringify(quote));
+
+  const listRaw = await c.env.CACHE.get('quote:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  list.unshift({ id, customerName: quote.customerName, quoteDate: quote.quoteDate, validUntil: quote.validUntil, total, createdAt: now });
+  await c.env.CACHE.put('quote:list', JSON.stringify(list));
+
+  return c.json({ ok: true, id });
+});
+
+// GET /api/quotes
+app.get('/api/quotes', async (c) => {
+  const token = c.req.header('X-Quote-Token');
+  const role = validateQuoteToken(token, c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const listRaw = await c.env.CACHE.get('quote:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  return c.json({ list, role });
+});
+
+// GET /api/quotes/:id
+app.get('/api/quotes/:id', async (c) => {
+  const token = c.req.header('X-Quote-Token');
+  const role = validateQuoteToken(token, c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const id = c.req.param('id');
+  const raw = await c.env.CACHE.get(`quote:${id}`);
+  if (!raw) return c.json({ error: '找不到報價單' }, 404);
+  return c.body(raw, 200, { 'content-type': 'application/json' });
+});
+
+// DELETE /api/quotes/:id  (需要主管通行碼)
+app.delete('/api/quotes/:id', async (c) => {
+  const token = c.req.header('X-Quote-Token');
+  const role = validateQuoteToken(token, c.env);
+  if (role !== 'admin') return c.json({ error: '需要管理員權限' }, 403);
+
+  const id = c.req.param('id');
+  await c.env.CACHE.delete(`quote:${id}`);
+
+  const listRaw = await c.env.CACHE.get('quote:list');
+  if (listRaw) {
+    const list = JSON.parse(listRaw).filter(q => q.id !== id);
+    await c.env.CACHE.put('quote:list', JSON.stringify(list));
+  }
+
+  return c.json({ ok: true });
 });
 
 // ── Fetch handler：外層 wrapper 確保 CORS 覆蓋所有 response ─────────────────
