@@ -366,17 +366,23 @@ app.post('/api/quotes', async (c) => {
 
   const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
-  const total = (body.items || []).reduce((s, it) => s + (Number(it.subtotal) || 0), 0);
+  const taxType   = body.taxType === 'excluded' ? 'excluded' : 'included';
+  const subtotal  = (body.items || []).reduce((s, it) => s + (Number(it.subtotal) || 0), 0);
+  const taxAmount = taxType === 'excluded' ? Math.round(subtotal * 0.05) : 0;
+  const total     = subtotal + taxAmount;
   const quote = {
     id,
-    company:      ['dippin', 'miji'].includes(body.company) ? body.company : 'dippin',
-    staffName:    String(body.staffName || '').trim(),
-    customerName: String(body.customerName || '').trim(),
-    customerNote: String(body.customerNote || '').trim(),
-    quoteDate:    String(body.quoteDate || now.slice(0, 10)),
-    validUntil:   String(body.validUntil || ''),
-    items:        body.items || [],
-    note:         String(body.note || '').trim(),
+    company:       ['dippin', 'miji'].includes(body.company) ? body.company : 'dippin',
+    staffName:     String(body.staffName || '').trim(),
+    customerName:  String(body.customerName || '').trim(),
+    customerNote:  String(body.customerNote || '').trim(),
+    customerTaxId: String(body.customerTaxId || '').trim(),
+    quoteDate:     String(body.quoteDate || now.slice(0, 10)),
+    validUntil:    String(body.validUntil || ''),
+    items:         body.items || [],
+    note:          String(body.note || '').trim(),
+    taxType,
+    taxAmount,
     total,
     createdAt: now,
   };
