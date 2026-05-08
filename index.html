@@ -3246,6 +3246,20 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               <input type="date" id="quoteValidUntil"
                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
             </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">報價人員 <span class="text-red-500">*</span></label>
+              <input type="text" id="quoteStaffName"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                placeholder="請輸入姓名">
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1">報價公司</label>
+              <select id="quoteCompany"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                <option value="dippin">台灣迪品有限公司（宅人・ColorFan）</option>
+                <option value="miji">米吉數位有限公司（山人）</option>
+              </select>
+            </div>
           </div>
 
           <div class="mb-4">
@@ -3332,6 +3346,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     let currentQuote = null;
     let quoteItemCounter = 0;
 
+    const COMPANIES = {
+      dippin: { name: '台灣迪品有限公司', shops: '宅人・ColorFan' },
+      miji:   { name: '米吉數位有限公司', shops: '山人' },
+    };
+    // 公司章 base64 — 待填入（請見 README 說明）
+    const STAMPS = {
+      dippin: '',
+      miji:   '',
+    };
+
     function initQuoteTab() {
       if (quoteToken && quoteRole) {
         _showQuoteMain();
@@ -3409,13 +3433,15 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       const isAdmin = quoteRole === 'admin';
       const rows = list.map(q => {
-        const total = Number(q.total).toLocaleString('zh-TW');
-        const qno   = _quoteNo(q.id);
+        const total  = Number(q.total).toLocaleString('zh-TW');
+        const qno    = _quoteNo(q.id);
+        const coName = (COMPANIES[q.company] || COMPANIES.dippin).name;
         return `<tr class="border-b hover:bg-gray-50">
           <td class="px-4 py-3 text-xs text-gray-400 font-mono">${qno}</td>
           <td class="px-4 py-3 text-sm font-medium text-gray-800">${_esc(q.customerName)}</td>
+          <td class="px-4 py-3 text-xs text-gray-400">${_esc(coName)}</td>
+          <td class="px-4 py-3 text-xs text-gray-400">${_esc(q.staffName || '')}</td>
           <td class="px-4 py-3 text-sm text-gray-500">${q.quoteDate || ''}</td>
-          <td class="px-4 py-3 text-sm text-gray-400">${q.validUntil || '-'}</td>
           <td class="px-4 py-3 text-sm text-right font-medium text-blue-700">NT$ ${total}</td>
           <td class="px-4 py-3 text-right">
             <button onclick="viewQuote('${q.id}')"
@@ -3429,8 +3455,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <thead><tr class="bg-gray-50 text-gray-500 text-xs">
           <th class="text-left px-4 py-2">報價單號</th>
           <th class="text-left px-4 py-2">客戶名稱</th>
+          <th class="text-left px-4 py-2">報價公司</th>
+          <th class="text-left px-4 py-2">業務</th>
           <th class="text-left px-4 py-2">報價日期</th>
-          <th class="text-left px-4 py-2">有效期限</th>
           <th class="text-right px-4 py-2">金額</th>
           <th class="px-4 py-2"></th>
         </tr></thead>
@@ -3462,6 +3489,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const today = new Date().toISOString().slice(0, 10);
       const in14  = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+      document.getElementById('quoteStaffName').value     = '';
+      document.getElementById('quoteCompany').value       = 'dippin';
       document.getElementById('quoteCustomerName').value  = '';
       document.getElementById('quoteCustomerNote').value  = '';
       document.getElementById('quoteDate').value          = today;
@@ -3539,8 +3568,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       successEl.classList.add('hidden');
 
       const customerName = document.getElementById('quoteCustomerName').value.trim();
+      const staffName    = document.getElementById('quoteStaffName').value.trim();
       if (!customerName) {
         errEl.textContent = '請填寫客戶名稱';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      if (!staffName) {
+        errEl.textContent = '請填寫報價人員姓名';
         errEl.classList.remove('hidden');
         return;
       }
@@ -3552,6 +3587,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
 
       const body = {
+        company:      document.getElementById('quoteCompany').value,
+        staffName,
         customerName,
         customerNote: document.getElementById('quoteCustomerNote').value.trim(),
         quoteDate:    document.getElementById('quoteDate').value,
@@ -3600,6 +3637,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     function _renderDetail(q) {
       const qno   = _quoteNo(q.id);
       const total = Number(q.total).toLocaleString('zh-TW');
+      const co    = COMPANIES[q.company] || COMPANIES.dippin;
+      const stamp = STAMPS[q.company] || '';
       const itemRows = (q.items || []).map((it, i) => `
         <tr class="border-b">
           <td class="px-3 py-2 text-sm text-gray-400">${i+1}</td>
@@ -3615,10 +3654,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <div>
             <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">報價單</div>
             <div class="text-2xl font-bold text-gray-800">${qno}</div>
+            <div class="text-sm font-medium text-gray-600 mt-1">${co.name}</div>
+            <div class="text-xs text-gray-400">${co.shops}</div>
           </div>
           <div class="text-right text-sm text-gray-600">
             <div><span class="text-gray-400">報價日期：</span>${q.quoteDate || '-'}</div>
             <div><span class="text-gray-400">有效期限：</span>${q.validUntil || '-'}</div>
+            ${q.staffName ? `<div class="mt-1"><span class="text-gray-400">報價人員：</span><strong>${_esc(q.staffName)}</strong></div>` : ''}
           </div>
         </div>
         <div class="bg-gray-50 rounded-lg p-4 mb-6">
@@ -3639,16 +3681,25 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <tbody>${itemRows}</tbody>
           </table>
         </div>
-        <div class="flex justify-end mb-4">
+        <div class="flex justify-end mb-6">
           <div class="text-right">
             <div class="text-sm text-gray-400 mb-1">合計金額</div>
             <div class="text-3xl font-bold text-blue-700">NT$ ${total}</div>
           </div>
         </div>
-        ${q.note ? `<div class="border-t pt-4 mt-4">
+        ${q.note ? `<div class="border-t pt-4 mb-6">
           <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">備註</div>
           <div class="text-sm text-gray-600 whitespace-pre-wrap">${_esc(q.note)}</div>
-        </div>` : ''}`;
+        </div>` : ''}
+        <div class="flex justify-between items-end pt-4 border-t mt-2">
+          <div>
+            ${stamp ? `<img src="${stamp}" style="height:90px;opacity:0.9;mix-blend-mode:multiply" alt="公司章">` : '<div style="width:80px;height:80px;border:2px dashed #ccc;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:11px">章</div>'}
+          </div>
+          <div class="text-right text-xs text-gray-400">
+            ${q.staffName ? `<div class="mb-1 text-sm text-gray-600">業務：<strong>${_esc(q.staffName)}</strong></div>` : ''}
+            <div>${co.name}</div>
+          </div>
+        </div>`;
     }
 
     function backToQuoteList() {
@@ -3672,8 +3723,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function exportQuotePrint() {
       if (!currentQuote) return;
-      const q   = currentQuote;
-      const qno = _quoteNo(q.id);
+      const q     = currentQuote;
+      const qno   = _quoteNo(q.id);
+      const co    = COMPANIES[q.company] || COMPANIES.dippin;
+      const stamp = STAMPS[q.company] || '';
       const itemRows = (q.items || []).map((it, i) => `
         <tr>
           <td>${i+1}</td>
@@ -3683,23 +3736,41 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <td style="text-align:right">NT$ ${Number(it.unitPrice).toLocaleString('zh-TW')}</td>
           <td style="text-align:right">NT$ ${Number(it.subtotal).toLocaleString('zh-TW')}</td>
         </tr>`).join('');
+      const stampHtml = stamp
+        ? `<img src="${stamp}" style="height:90px;opacity:0.9;mix-blend-mode:multiply" alt="公司章">`
+        : '';
       const html = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8">
 <title>報價單 ${qno}</title>
 <style>
   body{font-family:"Microsoft JhengHei","Apple LiGothic Medium",sans-serif;max-width:800px;margin:0 auto;padding:32px;font-size:13px;color:#333}
-  h1{font-size:22px;margin-bottom:4px}
-  .sub{color:#666;margin-bottom:20px;font-size:13px}
-  .box{background:#f8f8f8;padding:12px 16px;border-radius:6px;margin-bottom:20px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+  .co-name{font-size:14px;font-weight:700;color:#333}
+  .co-shops{font-size:11px;color:#888;margin-top:2px}
+  h1{font-size:20px;margin:4px 0}
+  .sub{color:#666;margin-bottom:20px;font-size:12px}
+  .box{background:#f8f8f8;padding:10px 14px;border-radius:6px;margin-bottom:18px}
   table{width:100%;border-collapse:collapse;margin-bottom:16px}
-  th{background:#f0f0f0;font-weight:600;padding:8px 10px;text-align:left;border-bottom:2px solid #ddd}
-  td{padding:8px 10px;border-bottom:1px solid #eee}
-  .total{font-size:16px;font-weight:bold;text-align:right;color:#1a56db}
-  .note{border-top:1px solid #eee;padding-top:12px;margin-top:4px;color:#555;font-size:12px}
+  th{background:#f0f0f0;font-weight:600;padding:7px 10px;text-align:left;border-bottom:2px solid #ddd}
+  td{padding:7px 10px;border-bottom:1px solid #eee}
+  .total{font-size:15px;font-weight:bold;text-align:right;color:#1a56db}
+  .note{border-top:1px solid #eee;padding-top:10px;margin-top:4px;color:#555;font-size:12px}
+  .footer{display:flex;justify-content:space-between;align-items:flex-end;margin-top:24px;padding-top:12px;border-top:1px solid #eee}
+  .footer-right{text-align:right;font-size:12px;color:#666}
   @media print{button{display:none}}
 </style></head><body>
-<h1>報價單 ${qno}</h1>
-<div class="sub">報價日期：${q.quoteDate||'-'}　有效期限：${q.validUntil||'-'}</div>
-<div class="box"><strong>${_esc(q.customerName)}</strong>${q.customerNote?`<br><span style="color:#666">${_esc(q.customerNote)}</span>`:''}</div>
+<div class="header">
+  <div>
+    <div class="co-name">${co.name}</div>
+    <div class="co-shops">${co.shops}</div>
+    <h1>報價單 ${qno}</h1>
+  </div>
+  <div style="text-align:right;font-size:12px;color:#666">
+    <div>報價日期：${q.quoteDate||'-'}</div>
+    <div>有效期限：${q.validUntil||'-'}</div>
+    ${q.staffName?`<div style="margin-top:4px">業務：<strong>${_esc(q.staffName)}</strong></div>`:''}
+  </div>
+</div>
+<div class="box"><strong>${_esc(q.customerName)}</strong>${q.customerNote?`<br><span style="color:#888;font-size:12px">${_esc(q.customerNote)}</span>`:''}</div>
 <table>
   <thead><tr>
     <th style="width:28px">#</th>
@@ -3716,6 +3787,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
   </tr></tfoot>
 </table>
 ${q.note?`<div class="note"><strong>備註</strong><br>${_esc(q.note).replace(/\n/g,'<br>')}</div>`:''}
+<div class="footer">
+  <div>${stampHtml}</div>
+  <div class="footer-right">
+    ${q.staffName?`<div>業務：<strong>${_esc(q.staffName)}</strong></div>`:''}
+    <div style="margin-top:4px">${co.name}</div>
+  </div>
+</div>
 <script>window.print();<\/script>
 </body></html>`;
       const win = window.open('', '_blank');
@@ -3727,10 +3805,12 @@ ${q.note?`<div class="note"><strong>備註</strong><br>${_esc(q.note).replace(/\
       if (!currentQuote) return;
       const q   = currentQuote;
       const qno = _quoteNo(q.id);
+      const co  = COMPANIES[q.company] || COMPANIES.dippin;
       const data = [
         [`報價單：${qno}`],
+        [`${co.name}（${co.shops}）`],
         [`客戶：${q.customerName}`, '', '', '', '', q.customerNote || ''],
-        [`報價日期：${q.quoteDate || ''}`, '', '', '', `有效期限：${q.validUntil || ''}`],
+        [`報價日期：${q.quoteDate || ''}`, '', '', '', `有效期限：${q.validUntil || ''}`, '', `業務：${q.staffName || ''}`],
         [],
         ['#', '品號', '品名', '數量', '單價', '小計'],
         ...(q.items || []).map((it, i) => [i+1, it.code||'', it.name||'', it.qty, it.unitPrice, it.subtotal]),

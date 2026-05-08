@@ -4,16 +4,26 @@ import { zipSync } from 'fflate';
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
+  'https://didibox.cc',
   'https://ec.mallbic.com',
   'https://admin.1shop.tw',
   'https://scm.mamilove.com.tw',
 ];
 
 function corsHeaders(origin) {
+  // 允許 file:// 本機測試（瀏覽器送 Origin: null 或不送 Origin）
+  if (!origin || origin === 'null') {
+    return {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Quote-Token',
+      'Access-Control-Max-Age': '86400',
+    };
+  }
   if (!ALLOWED_ORIGINS.includes(origin)) return {};
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Quote-Token',
     'Access-Control-Max-Age': '86400',
   };
@@ -359,12 +369,14 @@ app.post('/api/quotes', async (c) => {
   const total = (body.items || []).reduce((s, it) => s + (Number(it.subtotal) || 0), 0);
   const quote = {
     id,
+    company:      ['dippin', 'miji'].includes(body.company) ? body.company : 'dippin',
+    staffName:    String(body.staffName || '').trim(),
     customerName: String(body.customerName || '').trim(),
     customerNote: String(body.customerNote || '').trim(),
-    quoteDate: String(body.quoteDate || now.slice(0, 10)),
-    validUntil: String(body.validUntil || ''),
-    items: body.items || [],
-    note: String(body.note || '').trim(),
+    quoteDate:    String(body.quoteDate || now.slice(0, 10)),
+    validUntil:   String(body.validUntil || ''),
+    items:        body.items || [],
+    note:         String(body.note || '').trim(),
     total,
     createdAt: now,
   };
@@ -373,7 +385,7 @@ app.post('/api/quotes', async (c) => {
 
   const listRaw = await c.env.CACHE.get('quote:list');
   const list = listRaw ? JSON.parse(listRaw) : [];
-  list.unshift({ id, customerName: quote.customerName, quoteDate: quote.quoteDate, validUntil: quote.validUntil, total, createdAt: now });
+  list.unshift({ id, company: quote.company, staffName: quote.staffName, customerName: quote.customerName, quoteDate: quote.quoteDate, validUntil: quote.validUntil, total, createdAt: now });
   await c.env.CACHE.put('quote:list', JSON.stringify(list));
 
   return c.json({ ok: true, id });
