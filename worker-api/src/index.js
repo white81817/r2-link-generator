@@ -183,6 +183,74 @@ function dateStr() {
   return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// ── Shared: parse 1shop productExport xlsx → rows ────────────────────────────
+function parsePlatformXlsx(buf) {
+  const wb        = XLSX.read(buf, { type: 'array' });
+  const sheetName = wb.SheetNames[0];
+  const rows      = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' });
+  return { rows, sheetName };
+}
+
+// ── Shared: rows + mapping → parts xlsx Uint8Array[] ─────────────────────────
+// 從 gen-1shop-update 抽出來，給 v1 (zip) 與 v2 (KV store) 共用。
+// 回 {stats, unmatchedCodes, parts:[{filename, bytes, dataRows}]}
+function buildOneshopParts(rows, sheetName, mapping) {
+  let matched = 0, updated = 0, unmatched = 0;
+  const unmatchedCodes = [];
+
+  // col 1=類型, col 13=貨號, col 16=現貨數量, col 17=預購數量
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][1] || '').trim() !== '子項') continue;
+    const code = String(rows[i][13] || '').trim();
+    if (!code) continue;
+    matched++;
+    const result = lookup(code, mapping);
+    if (result !== null) {
+      rows[i][16] = result.stock;
+      rows[i][17] = result.canPreorder ? 500 : 0;
+      updated++;
+    } else {
+      rows[i][16] = 0;
+      rows[i][17] = 0;
+      unmatched++;
+      unmatchedCodes.push(code);
+    }
+  }
+
+  const CHUNK = 500;
+  const header   = rows[0];
+  const dataRows = rows.slice(1);
+  const ds       = dateStr();
+  const parts    = [];
+
+  if (dataRows.length > CHUNK) {
+    let num = 1;
+    for (let offset = 0; offset < dataRows.length; offset += CHUNK) {
+      const chunk    = [header, ...dataRows.slice(offset, offset + CHUNK)];
+      const filename = `官網_庫存更新_${ds}_part${num}.xlsx`;
+      const newWb    = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(newWb, XLSX.utils.aoa_to_sheet(chunk), sheetName);
+      parts.push({
+        filename,
+        bytes:    new Uint8Array(XLSX.write(newWb, { type: 'array', bookType: 'xlsx' })),
+        dataRows: chunk.length - 1,
+      });
+      num++;
+    }
+  } else {
+    const filename = `官網_庫存更新_${ds}.xlsx`;
+    const newWb    = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newWb, XLSX.utils.aoa_to_sheet(rows), sheetName);
+    parts.push({
+      filename,
+      bytes:    new Uint8Array(XLSX.write(newWb, { type: 'array', bookType: 'xlsx' })),
+      dataRows: dataRows.length,
+    });
+  }
+
+  return { stats: { matched, updated, unmatched }, unmatchedCodes, parts };
+}
+
 // ── Gen 1shop update ──────────────────────────────────────────────────────────
 // POST /api/gen-1shop-update
 // FormData: platform (xlsx), mapping (JSON string from parse-erp)
@@ -266,6 +334,94 @@ app.post('/api/gen-1shop-update', async (c) => {
   return c.body(zipped, 200, {
     'Content-Type': 'application/zip',
     'Content-Disposition': `attachment; filename="1shop_update_${ds}.zip"`,
+  });
+});
+
+// ── v2: Build 1shop parts and store in KV ────────────────────────────────────
+// POST /api/build-1shop-parts
+//   JSON body: { shopName, productExportUrl, mappingKey, cacheTTL? }
+//   - server-side fetch productExportUrl (gateway URL 自帶 token, 不需 cookie)
+//   - 從 KV 撈 mapping (mappingKey 來自 Step B 寫的 'mapping-today')
+//   - 用共用 buildOneshopParts() 切 chunks
+//   - 每個 part bytes 直接寫進 KV (ArrayBuffer)，key = `1shop-part-<safe>-<idx>-<ts>`
+//   Response: { ok, stats, unmatchedCodes, parts: [{ filename, cacheKey, size }] }
+//
+// 配 /api/serve-part 一起用 — client 拿到 cacheKey 後 navigate 到 serve-part 觸發瀏覽器
+// 原生下載 (Content-Disposition attachment)，落盤後再 file_upload 到 1shop。
+// 詳細設計緣由見 2026-05-04 排程報告。
+app.post('/api/build-1shop-parts', async (c) => {
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+
+  const { shopName, productExportUrl, mappingKey, cacheTTL } = body;
+  if (!shopName || !productExportUrl || !mappingKey) {
+    return c.json({ error: '需要 shopName / productExportUrl / mappingKey' }, 400);
+  }
+
+  // 1. 從 KV 拿 mapping
+  const mappingRaw = await c.env.CACHE.get(mappingKey);
+  if (!mappingRaw) return c.json({ error: `mapping cache key "${mappingKey}" 不存在或已過期` }, 404);
+  let mapping;
+  try { mapping = JSON.parse(mappingRaw); }
+  catch { return c.json({ error: 'mapping JSON 格式錯誤' }, 400); }
+
+  // 2. server-side fetch productExport
+  let buf;
+  try {
+    const resp = await fetch(productExportUrl);
+    if (!resp.ok) return c.json({ error: `productExport fetch 失敗: HTTP ${resp.status}` }, 502);
+    buf = await resp.arrayBuffer();
+  } catch (e) {
+    return c.json({ error: 'productExport fetch error: ' + e.message }, 502);
+  }
+
+  // 3. parse + build parts
+  let parsed;
+  try { parsed = parsePlatformXlsx(buf); }
+  catch (e) { return c.json({ error: '解析 productExport 失敗：' + e.message }, 400); }
+
+  const { stats, unmatchedCodes, parts } = buildOneshopParts(parsed.rows, parsed.sheetName, mapping);
+
+  // 4. 寫進 KV (binary)，key 帶 ts 避免跨 run 衝突
+  const ttl       = Number(cacheTTL) || 3600;
+  const ts        = Date.now();
+  const safe      = String(shopName).replace(/[^A-Za-z0-9_-]/g, '_');
+  const outParts  = [];
+  for (let i = 0; i < parts.length; i++) {
+    const cacheKey = `1shop-part-${safe}-${i + 1}-${ts}`;
+    await c.env.CACHE.put(cacheKey, parts[i].bytes, { expirationTtl: ttl });
+    outParts.push({
+      filename: parts[i].filename,
+      cacheKey,
+      size:     parts[i].bytes.byteLength,
+    });
+  }
+
+  return c.json({ ok: true, stats, unmatchedCodes, parts: outParts });
+});
+
+// ── v2: Serve a single 1shop part from KV with attachment header ──────────────
+// GET /api/serve-part?key=<cacheKey>&name=<download filename, optional>
+//   - 從 KV 撈 binary
+//   - 回傳時 Content-Disposition: attachment; filename*=UTF-8''<encoded>
+//   - 必須用 new Response(buf, {...})，Hono c.body 第三 arg 在 binary 不生效
+//     (Content-Disposition 會掉)
+app.get('/api/serve-part', async (c) => {
+  const key  = c.req.query('key');
+  const name = c.req.query('name') || 'part.xlsx';
+  if (!key) return c.json({ error: '需要 key 參數' }, 400);
+
+  const buf = await c.env.CACHE.get(key, { type: 'arrayBuffer' });
+  if (!buf) return c.text('part not found or expired', 404);
+
+  return new Response(buf, {
+    status: 200,
+    headers: {
+      'Content-Type':        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control':       'no-store',
+    },
   });
 });
 
