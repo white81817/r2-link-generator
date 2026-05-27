@@ -2010,9 +2010,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="Kai"> Kai</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="Peter"> Peter</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="Yuki"> Yuki</label>
-              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="大陸廠商"> 大陸廠商</label>
-              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="台灣廠商"> 台灣廠商</label>
-              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="佩恩"> 佩恩</label>
+              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="大陸廠商" onchange="recalcAllVariants()"> 大陸廠商</label>
+              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="台灣廠商" onchange="recalcAllVariants()"> 台灣廠商</label>
+              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="Patty"> Patty</label>
+              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="韓國廠商" onchange="recalcAllVariants()"> 韓國廠商</label>
+              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="廠商出貨包運費" onchange="recalcAllVariants()"> 廠商出貨包運費</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="非訂製"> 非訂製</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="訂製"> 訂製</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="等訂製"> 等訂製</label>
@@ -2043,7 +2045,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-bold text-gray-700 mb-1">預購說明</label>
-            <input id="p_preorder_note" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="(3~10個工作天出貨，不含例假日)">
+            <input id="p_preorder_note" type="text" class="w-full border rounded px-2 py-1.5 text-sm" value="(3~10個工作天出貨)" placeholder="(3~10個工作天出貨，不含例假日)">
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-bold text-gray-700 mb-1">加強文字（副標語）<span class="text-gray-400 font-normal text-xs ml-1">→ 也作為內部商品備註</span></label>
@@ -2081,9 +2083,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
         </div>
         <p class="text-xs text-gray-400 mb-3">
-          存貨成本 = 廠商批價×4.5 + 重量×12×4.5 ｜
-          雜項成本 = (條碼含0S→80，否則→95) + 10 + 售價×0.1 ｜
-          特價 = 售價 ｜ 原價 = 特價÷0.8（取整十） ｜
           <span class="text-blue-400">🔗 同步：批價、料號、重量、安全庫存、有效天數、交貨天數、銷售模式</span>
         </p>
         <div class="overflow-x-auto">
@@ -2166,11 +2165,33 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const sell      = parseFloat(row.querySelector('.v-sell').value) || 0;
       const barcode   = row.querySelector('.v-barcode').value.trim().toUpperCase();
 
-      const cost = wholesale * 4.5 + weight * 12 * 4.5;
+      const cnyRate = 4.55;
+      const krwRate = 0.0245;
+      const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
+      const isChina  = tags.includes('大陸廠商');
+      const isTaiwan = tags.includes('台灣廠商');
+      const isKorea  = tags.includes('韓國廠商');
+      const freeShip = tags.includes('廠商出貨包運費');
+
+      let cost = 0;
+      if (isChina) {
+        cost = freeShip
+          ? wholesale * cnyRate + weight * (7 + 1.5) * 4.5
+          : wholesale * cnyRate + weight * (7 + 1.5 + 3.5) * 4.5;
+      } else if (isTaiwan) {
+        cost = freeShip
+          ? wholesale
+          : wholesale + weight * 10;
+      } else if (isKorea) {
+        cost = freeShip
+          ? wholesale * krwRate + weight * 10 + weight * (120 + 10)
+          : wholesale * krwRate + weight * 10 + weight * (120 + 10 + 10);
+      } else {
+        cost = wholesale * cnyRate + weight * 12 * 4.5;
+      }
       row.querySelector('.v-cost').value = cost ? cost.toFixed(2) : '';
 
-      const base = barcode.includes('0S') ? 80 : 95;
-      const misc = sell ? base + 10 + sell * 0.1 : 0;
+      const misc = sell ? sell * 0.065 + 10 + sell * 0.1 : 0;
       row.querySelector('.v-misc').value = misc ? misc.toFixed(2) : '';
 
       row.querySelector('.v-spec').value = sell || '';
@@ -2193,6 +2214,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     function recalcAllVariants() {
       document.querySelectorAll('#variantRows tr').forEach(row => calcVariant(row));
     }
+
 
     function autoBarcode(row) {
       const code = pVal('p_code').trim();
@@ -2255,12 +2277,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <td class="border px-1 py-1 bg-blue-50"><input class="v-orig w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-purple-50 text-center"><input class="v-margin w-16 border-0 bg-transparent px-1 text-sm text-center" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1"><input class="v-stock w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.stock||0}" placeholder="0"></td>
-        <td class="border px-1 py-1"><input class="v-preorder w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.preorder||0}" placeholder="0"></td>
-        <td class="border px-1 py-1"><input class="v-safety w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.safety||''}" placeholder="5"
+        <td class="border px-1 py-1"><input class="v-preorder w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.preorder??500}" placeholder="0"></td>
+        <td class="border px-1 py-1"><input class="v-safety w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.safety??'0'}" placeholder="0"
           oninput="syncFromRow(this.closest('tr'),'v-safety')"></td>
         <td class="border px-1 py-1"><input class="v-valid-days w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.validDays||''}" placeholder=""
           oninput="syncFromRow(this.closest('tr'),'v-valid-days')"></td>
-        <td class="border px-1 py-1"><input class="v-delivery w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.deliveryDays||''}" placeholder="10"
+        <td class="border px-1 py-1"><input class="v-delivery w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.deliveryDays??'10'}" placeholder="10"
           oninput="syncFromRow(this.closest('tr'),'v-delivery')"></td>
         <td class="border px-1 py-1">
           <select class="v-sales-mode border-0 bg-transparent text-sm" onchange="syncFromRow(this.closest('tr'),'v-sales-mode')">
@@ -2488,7 +2510,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         if (!v.size)       errors.push(`第${r}列：尺寸必填`);
         if (!v.wholesale)  errors.push(`第${r}列：廠商批價必填`);
         if (!v.vendorCode) errors.push(`第${r}列：廠商料號必填`);
-        if (!v.weight)     errors.push(`第${r}列：重量必填`);
+
       });
       return errors;
     }
@@ -2508,7 +2530,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const header = ['商品編號','商品名稱','樣式','尺寸','庫存量','售價','雜項成本','存貨成本','重量','廠商',' 廠商料號','廠商批價','倉庫儲位','品項條碼','銷售模式(可追/售完/下架)','安全庫存','售價模式(系統/通路)','商品備註','規格備註','長','寬','高','交貨天數','有效天數','商品標籤'];
       const rows = variants.map((v, i) => [
         code, name, v.style, v.size,
-        v.stock||'0', v.sell||'', v.misc||'', v.cost||'', v.weight||'',
+        v.stock||'0', v.sell||'', v.misc||'', v.cost||'', '',
         pVal('p_vendor'), v.vendorCode, v.wholesale||'',
         '',
         v.barcode||(code.slice(0,-2)+String(i+1).padStart(2,'0')),
@@ -2562,10 +2584,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function clearProductForm() {
       if (!confirm('確定要清除所有填寫的資料嗎？')) return;
-      ['p_code','p_name','p_vendor','p_highlight','p_preorder_note','p_tags_custom',
+      ['p_code','p_name','p_vendor','p_highlight','p_tags_custom',
        'p_material','p_dimensions','p_prod_weight','p_description'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
+      document.getElementById('p_preorder_note').value = '(3~10個工作天出貨)';
       document.getElementById('opt1_name').value = '樣式';
       document.getElementById('opt2_name').value = '尺寸';
       document.querySelectorAll('#p_tags .tag-cb').forEach(cb => cb.checked = false);
