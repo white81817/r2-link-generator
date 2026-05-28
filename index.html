@@ -2530,7 +2530,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const header = ['商品編號','商品名稱','樣式','尺寸','庫存量','售價','雜項成本','存貨成本','重量','廠商',' 廠商料號','廠商批價','倉庫儲位','品項條碼','銷售模式(可追/售完/下架)','安全庫存','售價模式(系統/通路)','商品備註','規格備註','長','寬','高','交貨天數','有效天數','商品標籤'];
       const rows = variants.map((v, i) => [
         code, name, v.style, v.size,
-        v.stock||'0', v.sell||'', v.misc||'', v.cost||'', '',
+        v.stock||'0', v.sell||'', v.misc||'', v.cost||'', v.weight||'',
         pVal('p_vendor'), v.vendorCode, v.wholesale||'',
         '',
         v.barcode||(code.slice(0,-2)+String(i+1).padStart(2,'0')),
@@ -2542,6 +2542,28 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+
+      // 雜項成本(G) 與 存貨成本(H) 嵌入 Excel 公式
+      for (let i = 0; i < rows.length; i++) {
+        const r = i + 2;
+        ws[`G${r}`] = { t: 'n', f: `F${r}*0.155+I${r}*20+10` };
+        ws[`H${r}`] = { t: 'n', f:
+          `IF(ISNUMBER(SEARCH("大陸廠商",Y${r})),` +
+            `IF(ISNUMBER(SEARCH("廠商出貨包運費",Y${r})),` +
+              `L${r}*4.55+I${r}*8.5*4.5,` +
+              `L${r}*4.55+I${r}*12*4.5),` +
+          `IF(ISNUMBER(SEARCH("台灣廠商",Y${r})),` +
+            `IF(ISNUMBER(SEARCH("廠商出貨包運費",Y${r})),` +
+              `L${r},` +
+              `L${r}+I${r}*10),` +
+          `IF(ISNUMBER(SEARCH("韓國廠商",Y${r})),` +
+            `IF(ISNUMBER(SEARCH("廠商出貨包運費",Y${r})),` +
+              `L${r}*0.024+I${r}*10+I${r}*130,` +
+              `L${r}*0.024+I${r}*10+I${r}*140),` +
+          `L${r}*4.55+I${r}*12*4.5)))`
+        };
+      }
+
       ws['!cols'] = [10,20,10,6,8,8,8,10,8,10,12,10,12,16,20,8,14,24,16,6,6,6,8,8,16].map(w=>({wch:w}));
       XLSX.utils.book_append_sheet(wb, ws, '20100918_商品資料(從網頁匯入)');
       XLSX.writeFile(wb, `${code}_USALE建立.xlsx`);
