@@ -969,11 +969,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (size) displayText += ` - ${size}`;
       if (note) displayText += ` - ${note}`;
 
-      if (displayText.length > 50) {
-        alert("商品名稱過長！最多支援50個字元。");
-        return;
-      }
-
       const { box, svg } = createLabelElement(displayText, id);
       if (note) box.dataset.note = note;
       if (specNote) box.dataset.specNote = specNote;
@@ -1105,11 +1100,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             if (style) displayText += ` - ${style}`;
             if (size) displayText += ` - ${size}`;
             if (note) displayText += ` - ${note}`;
-
-            if (displayText.length > 50) {
-              errorMessages.push(`警告：商品 "${name}" 的完整文字過長（超過50字），已被跳過。`);
-              continue;
-            }
 
             const { box, svg } = createLabelElement(displayText, id);
             if (note) box.dataset.note = note;
