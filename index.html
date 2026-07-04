@@ -2092,8 +2092,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">廠商批價 <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap">廠商料號 <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">重量(kg) <span class="text-red-400">*</span></th>
-                <th class="border px-2 py-2 text-right whitespace-nowrap bg-gray-200">存貨成本<br><span class="font-normal text-gray-400">自動</span></th>
-                <th class="border px-2 py-2 text-right whitespace-nowrap bg-gray-200">雜項成本<br><span class="font-normal text-gray-400">自動</span></th>
+                <th class="border px-2 py-2 text-right whitespace-nowrap bg-gray-200" style="display:none">存貨成本<br><span class="font-normal text-gray-400">自動</span></th>
+                <th class="border px-2 py-2 text-right whitespace-nowrap bg-gray-200" style="display:none">雜項成本<br><span class="font-normal text-gray-400">自動</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-yellow-100">售價<br><span class="font-normal text-gray-400">手填</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-green-100">特價<br><span class="font-normal text-gray-400">=售價</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-blue-100">原價<br><span class="font-normal text-gray-400">÷0.8整十</span></th>
@@ -2259,8 +2259,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           oninput="syncFromRow(this.closest('tr'),'v-vendor-code')"></td>
         <td class="border px-1 py-1"><input class="v-weight w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.01" value="${d.weight||''}" placeholder="0"
           oninput="calcVariant(this.closest('tr'));syncFromRow(this.closest('tr'),'v-weight')"></td>
-        <td class="border px-1 py-1 bg-gray-50"><input class="v-cost w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
-        <td class="border px-1 py-1 bg-gray-50"><input class="v-misc w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
+        <td class="border px-1 py-1 bg-gray-50" style="display:none"><input class="v-cost w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
+        <td class="border px-1 py-1 bg-gray-50" style="display:none"><input class="v-misc w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-yellow-50"><input class="v-sell w-20 border-0 bg-transparent px-1 text-sm text-right font-bold" type="number" value="${d.sell||''}" placeholder="0"
           oninput="calcVariant(this.closest('tr'))"></td>
         <td class="border px-1 py-1 bg-green-50"><input class="v-spec w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
@@ -2520,7 +2520,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const header = ['商品編號','商品名稱','樣式','尺寸','庫存量','售價','雜項成本','存貨成本','重量','廠商',' 廠商料號','廠商批價','倉庫儲位','品項條碼','銷售模式(可追/售完/下架)','安全庫存','售價模式(系統/通路)','商品備註','規格備註','長','寬','高','交貨天數','有效天數','商品標籤'];
       const rows = variants.map((v, i) => [
         code, name, v.style, v.size,
-        v.stock||'0', v.sell||'', v.misc||'', v.cost||'', '',
+        v.stock||'0', v.sell||'', '', '', '',
         pVal('p_vendor'), v.vendorCode, v.wholesale||'',
         '',
         v.barcode||(code.slice(0,-2)+String(i+1).padStart(2,'0')),
