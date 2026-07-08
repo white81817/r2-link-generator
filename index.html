@@ -2099,7 +2099,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-green-100">特價<br><span class="font-normal text-gray-400">=售價</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-blue-100">原價<br><span class="font-normal text-gray-400">÷0.8整十</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-purple-100">毛利率<br><span class="font-normal text-gray-400">目標&gt;41%</span></th>
-                <th class="border px-2 py-2 text-right whitespace-nowrap bg-orange-100">廣告成本<br><span class="font-normal text-gray-400">手填</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">現貨庫存</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">預購數量</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">安全庫存</th>
@@ -2155,7 +2154,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const wholesale = parseFloat(row.querySelector('.v-wholesale').value) || 0;
       const weight    = parseFloat(row.querySelector('.v-weight').value) || 0;
       const sell      = parseFloat(row.querySelector('.v-sell').value) || 0;
-      const adCost    = parseFloat(row.querySelector('.v-ad-cost').value) || 0;
+      const adCost    = sell * 0.25;
       const barcode   = row.querySelector('.v-barcode').value.trim().toUpperCase();
 
       const cnyRate = 4.55;
@@ -2272,8 +2271,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <td class="border px-1 py-1 bg-green-50"><input class="v-spec w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-blue-50"><input class="v-orig w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-purple-50 text-center"><input class="v-margin w-16 border-0 bg-transparent px-1 text-sm text-center" type="text" readonly tabindex="-1"></td>
-        <td class="border px-1 py-1 bg-orange-50"><input class="v-ad-cost w-20 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.adCost||''}" placeholder="0"
-          oninput="calcVariant(this.closest('tr'));syncFromRow(this.closest('tr'),'v-ad-cost')"></td>
         <td class="border px-1 py-1"><input class="v-stock w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.stock||0}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-preorder w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.preorder??500}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-safety w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.safety??'0'}" placeholder="0"
@@ -2496,7 +2493,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         salesMode:    tr.querySelector('.v-sales-mode').value,
         barcode:      tr.querySelector('.v-barcode').value.trim(),
         barcodeManual: !!tr.querySelector('.v-barcode').dataset.manual,
-        adCost:       tr.querySelector('.v-ad-cost').value,
       }));
     }
 
