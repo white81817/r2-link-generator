@@ -2169,16 +2169,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       let cost = 0;
       if (isChina) {
         cost = freeShip
-          ? wholesale * cnyRate + weight * (7 + 1.5) * 4.5
-          : wholesale * cnyRate + weight * (7 + 1.5 + 3.5) * 4.5;
+          ? wholesale * cnyRate + weight * 5 + weight * 7 * 4.5
+          : wholesale * cnyRate + weight * 5 + weight * 10 + weight * 7 * 4.5;
       } else if (isTaiwan) {
         cost = freeShip
           ? wholesale
           : wholesale + weight * 10;
       } else if (isKorea) {
         cost = freeShip
-          ? wholesale * krwRate + weight * 115
-          : wholesale * krwRate + weight * 10 + weight * 115;
+          ? wholesale * krwRate + weight * 115 + weight * 5
+          : wholesale * krwRate + weight * 10 + weight * 115 + weight * 5;
       } else {
         cost = wholesale * cnyRate + weight * 12 * 4.5;
       }
