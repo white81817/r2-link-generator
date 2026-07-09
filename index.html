@@ -2164,7 +2164,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const isTaiwan = tags.includes('台灣廠商');
       const isKorea  = tags.includes('韓國廠商');
       const freeShip = tags.includes('廠商出貨包運費');
-      const directBind = tags.includes('直接綁多入銷售');
 
       let cost = 0;
       if (isChina) {
@@ -2184,12 +2183,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       row.querySelector('.v-cost').value = cost ? cost.toFixed(2) : '';
 
-      const shipPackCost = sell
-        ? (directBind ? Math.min(sell * 0.06, 150) : Math.min(Math.max(sell * 0.06, 25), 150))
-        : 0;
+      const shipPackCost = sell ? 100 : 0;
       const activityFee = sell * 0.125;
       const miscBase = sell ? (shipPackCost + activityFee) : 0;
-      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03;
+      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03 + 100 * 0.11;
       const misc = miscBase + returnCost;
       row.querySelector('.v-misc').value = misc ? misc.toFixed(2) : '';
 
@@ -2198,7 +2195,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const marginEl = row.querySelector('.v-margin');
       if (sell && cost) {
-        const margin = (sell - cost - misc) / sell;
+        const customerFee = sell < 1000 ? 80 : 0;
+        const margin = (sell + customerFee - cost - misc) / (sell + customerFee);
         let icon, label;
         if (margin >= 0.44)      { icon = '🟢'; label = '很好'; }
         else if (margin >= 0.38) { icon = '🟡'; label = '正常'; }
