@@ -2198,13 +2198,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const marginEl = row.querySelector('.v-margin');
       if (sell && cost) {
-        const customerFee = sell < 1000 ? 80 : 0;
-        const margin = (sell - cost - misc + customerFee) / (sell + customerFee);
+        const margin = (sell - cost - misc) / sell;
         let icon, label;
         if (margin >= 0.44)      { icon = '🟢'; label = '很好'; }
         else if (margin >= 0.38) { icon = '🟡'; label = '正常'; }
         else                      { icon = '🔴'; label = '危險'; }
-        marginEl.value = icon;
+        marginEl.value = icon + ' ' + (margin * 100).toFixed(1) + '%';
         marginEl.title = label;
       } else {
         marginEl.value = '';
