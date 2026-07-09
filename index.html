@@ -2201,8 +2201,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const customerFee = sell < 1000 ? 80 : 0;
         const margin = (sell - cost - misc + customerFee) / (sell + customerFee);
         let icon, label;
-        if (margin >= 0.445)      { icon = '🟢'; label = '很好'; }
-        else if (margin >= 0.395) { icon = '🟡'; label = '正常'; }
+        if (margin >= 0.44)      { icon = '🟢'; label = '很好'; }
+        else if (margin >= 0.38) { icon = '🟡'; label = '正常'; }
         else                      { icon = '🔴'; label = '危險'; }
         marginEl.value = icon;
         marginEl.title = label;
