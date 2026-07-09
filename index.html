@@ -2184,7 +2184,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       row.querySelector('.v-cost').value = cost ? cost.toFixed(2) : '';
 
-      const shipPackCost = sell ? Math.min(sell * 0.06 + (directBind ? 0 : 10), 200) : 0;
+      const shipPackCost = sell ? Math.min(sell * 0.05 + (directBind ? 0 : 10), 180) : 0;
       const activityFee = sell * 0.125;
       const miscBase = sell ? (shipPackCost + activityFee) : 0;
       const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03;
