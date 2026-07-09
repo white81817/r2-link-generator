@@ -2185,7 +2185,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       row.querySelector('.v-cost').value = cost ? cost.toFixed(2) : '';
 
       const miscBase = sell ? (sell * 0.185 + (directBind ? 0 : 10)) : 0;
-      const returnCost = adCost * 0.11 + miscBase * 0.11 + 12 * 0.08 + miscBase * 0.03;
+      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03;
       const misc = miscBase + returnCost;
       row.querySelector('.v-misc').value = misc ? misc.toFixed(2) : '';
 
