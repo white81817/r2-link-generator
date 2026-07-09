@@ -2196,8 +2196,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (sell && cost) {
         const customerFee = sell < 1000 ? 80 : 0;
         const margin = (sell - cost - misc + customerFee) / (sell + customerFee);
-        marginEl.value = margin > 0.395 ? '🟢' : '🔴';
-        marginEl.title = (margin * 100).toFixed(1) + '%';
+        let icon, label;
+        if (margin >= 0.445)      { icon = '🟢'; label = '很好'; }
+        else if (margin >= 0.395) { icon = '🟡'; label = '正常'; }
+        else                      { icon = '🔴'; label = '危險'; }
+        marginEl.value = icon;
+        marginEl.title = (margin * 100).toFixed(1) + '%（' + label + '）';
       } else {
         marginEl.value = '';
         marginEl.title = '';
