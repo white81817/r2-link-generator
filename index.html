@@ -2098,7 +2098,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-yellow-100">售價<br><span class="font-normal text-gray-400">手填</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-green-100">特價<br><span class="font-normal text-gray-400">=售價</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-blue-100">原價<br><span class="font-normal text-gray-400">÷0.8整十</span></th>
-                <th class="border px-2 py-2 text-right whitespace-nowrap bg-purple-100">毛利率<br><span class="font-normal text-gray-400">避開🔴</span></th>
+                <th class="border px-2 py-2 text-right bg-purple-100">毛利率<br><span class="font-normal text-gray-400 whitespace-normal">至少黃燈、建議40%以上較安全</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">現貨庫存</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">預購數量</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">安全庫存</th>
@@ -2168,8 +2168,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       let cost = 0;
       if (isChina) {
         cost = freeShip
-          ? wholesale * cnyRate + weight * 5 + weight * 7 * 4.5
-          : wholesale * cnyRate + weight * 5 + weight * 10 + weight * 7 * 4.5;
+          ? wholesale * cnyRate + weight * 5 + weight * 7 * 4.55
+          : wholesale * cnyRate + weight * 5 + weight * 10 + weight * 7 * 4.55;
       } else if (isTaiwan) {
         cost = freeShip
           ? wholesale
@@ -2211,6 +2211,15 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function recalcAllVariants() {
       document.querySelectorAll('#variantRows tr').forEach(row => calcVariant(row));
+    }
+
+    function checkVendorTagSelected(sellValue) {
+      if (!sellValue) return;
+      const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
+      const hasVendorTag = tags.includes('大陸廠商') || tags.includes('台灣廠商') || tags.includes('韓國廠商');
+      if (!hasVendorTag) {
+        alert('請勾選廠商標籤（大陸廠商／台灣廠商／韓國廠商）才能正確計算存貨成本！');
+      }
     }
 
 
@@ -2270,7 +2279,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <td class="border px-1 py-1 bg-gray-50" style="display:none"><input class="v-cost w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-gray-50" style="display:none"><input class="v-misc w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-yellow-50"><input class="v-sell w-20 border-0 bg-transparent px-1 text-sm text-right font-bold" type="number" value="${d.sell||''}" placeholder="0"
-          oninput="calcVariant(this.closest('tr'))"></td>
+          oninput="calcVariant(this.closest('tr'))" onchange="checkVendorTagSelected(this.value)"></td>
         <td class="border px-1 py-1 bg-green-50"><input class="v-spec w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-blue-50"><input class="v-orig w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-purple-50 text-center"><input class="v-margin w-16 border-0 bg-transparent px-1 text-sm text-center" type="text" readonly tabindex="-1"></td>
