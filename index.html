@@ -2066,11 +2066,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <div class="flex justify-between items-center mb-2">
           <h2 class="text-xl font-semibold text-gray-700">規格與庫存</h2>
           <div class="flex items-center gap-3">
-            <div class="flex items-center gap-1.5 text-sm border rounded px-3 py-1.5">
-              <span class="font-bold text-gray-600 mr-1">平台：</span>
-              <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="p_platform" value="官網/momo" checked onchange="recalcAllVariants()"> 官網/momo</label>
-              <label class="flex items-center gap-1 cursor-pointer ml-2"><input type="radio" name="p_platform" value="蝦皮" onchange="recalcAllVariants()"> 蝦皮</label>
-            </div>
             <label id="syncLabel" class="flex items-center gap-1.5 text-sm border rounded px-3 py-1.5 cursor-pointer select-none hover:bg-gray-50 transition-colors" title="開啟後，修改任一列的共用欄位會自動同步到所有列">
               <input type="checkbox" id="syncToggle" class="w-4 h-4">
               <span>🔗 同步共用欄位</span>
@@ -2159,9 +2154,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const wholesale = parseFloat(row.querySelector('.v-wholesale').value) || 0;
       const weight    = parseFloat(row.querySelector('.v-weight').value) || 0;
       const sell      = parseFloat(row.querySelector('.v-sell').value) || 0;
-      const platform  = (document.querySelector('input[name="p_platform"]:checked') || {}).value || '官網/momo';
-      const isShopee  = platform === '蝦皮';
-      const adCost    = sell * (isShopee ? 0.15 : 0.25);
+      const adCost    = sell * 0.25;
       const barcode   = row.querySelector('.v-barcode').value.trim().toUpperCase();
 
       const cnyRate = 4.55;
@@ -2204,12 +2197,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (sell && cost) {
         const customerFee = sell < 1000 ? 80 : 0;
         const margin = (sell + customerFee - cost - misc) / (sell + customerFee);
-        const goodThreshold   = isShopee ? 0.35 : 0.44;
-        const normalThreshold = isShopee ? 0.29 : 0.38;
         let icon, label;
-        if (margin >= goodThreshold)   { icon = '🟢'; label = '很好'; }
-        else if (margin >= normalThreshold) { icon = '🟡'; label = '正常'; }
-        else                            { icon = '🔴'; label = '危險'; }
+        if (margin >= 0.44)      { icon = '🟢'; label = '很好'; }
+        else if (margin >= 0.38) { icon = '🟡'; label = '正常'; }
+        else                      { icon = '🔴'; label = '危險'; }
         marginEl.value = icon + ' ' + (margin * 100).toFixed(1) + '%';
         marginEl.title = label;
       } else {
@@ -2347,7 +2338,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         description:  pVal('p_description'),
         tagsChecked:  Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value),
         tagsCustom:   pVal('p_tags_custom'),
-        platform:     (document.querySelector('input[name="p_platform"]:checked') || {}).value || '官網/momo',
         opt1Name:     pVal('opt1_name'),
         opt2Name:     pVal('opt2_name'),
         variants:     getVariants(),
@@ -2441,9 +2431,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       document.querySelectorAll('#p_tags .tag-cb').forEach(cb => {
         cb.checked = (data.tagsChecked || []).includes(cb.value);
-      });
-      document.querySelectorAll('input[name="p_platform"]').forEach(radio => {
-        radio.checked = radio.value === (data.platform || '官網/momo');
       });
 
       const codeVal = data.code || '';
@@ -2612,9 +2599,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.getElementById('opt1_name').value = '樣式';
       document.getElementById('opt2_name').value = '尺寸';
       document.querySelectorAll('#p_tags .tag-cb').forEach(cb => cb.checked = false);
-      document.querySelectorAll('input[name="p_platform"]').forEach(radio => {
-        radio.checked = radio.value === '官網/momo';
-      });
       document.getElementById('p_code_warning').style.display = 'none';
       document.getElementById('variantRows').innerHTML = '';
       variantRowCount = 0;
