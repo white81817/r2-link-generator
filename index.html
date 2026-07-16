@@ -2537,7 +2537,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const header = ['商品編號','商品名稱','樣式','尺寸','庫存量','售價','雜項成本','存貨成本','重量','廠商',' 廠商料號','廠商批價','倉庫儲位','品項條碼','銷售模式(可追/售完/下架)','安全庫存','售價模式(系統/通路)','商品備註','規格備註','長','寬','高','交貨天數','有效天數','商品標籤'];
       const rows = variants.map((v, i) => [
         code, name, v.style, v.size,
-        v.stock||'0', v.sell||'', '', '', '',
+        v.stock||'0', v.sell||'', '', '', v.weight||'',
         pVal('p_vendor'), v.vendorCode, v.wholesale||'',
         '',
         v.barcode||(code.slice(0,-2)+String(i+1).padStart(2,'0')),
