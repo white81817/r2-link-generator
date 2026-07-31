@@ -2188,7 +2188,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const shipPackCost = (sell && !consolidatedShip) ? 100 : 0;
       const activityFee = sell * 0.125;
       const miscBase = sell ? (shipPackCost + activityFee) : 0;
-      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03 + shipPackCost * 0.11;
+      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03 + 100 * 0.11;
       const misc = miscBase + returnCost;
       row.querySelector('.v-misc').value = misc ? misc.toFixed(2) : '';
 
