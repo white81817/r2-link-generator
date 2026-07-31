@@ -2006,6 +2006,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="韓國廠商" onchange="recalcAllVariants()"> 韓國廠商</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="廠商出貨包運費" onchange="recalcAllVariants()"> 廠商出貨包運費</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="直接綁多入銷售" onchange="recalcAllVariants()"> 直接綁多入銷售</label>
+              <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="集運出客人" onchange="recalcAllVariants()"> 集運出客人</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="非訂製"> 非訂製</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="訂製"> 訂製</label>
               <label class="flex items-center gap-1 text-sm border rounded px-2 py-1 cursor-pointer hover:bg-gray-50"><input type="checkbox" class="tag-cb" value="等訂製"> 等訂製</label>
@@ -2164,6 +2165,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const isTaiwan = tags.includes('台灣廠商');
       const isKorea  = tags.includes('韓國廠商');
       const freeShip = tags.includes('廠商出貨包運費');
+      const consolidatedShip = tags.includes('集運出客人');
 
       let cost = 0;
       if (isChina) {
@@ -2183,10 +2185,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       row.querySelector('.v-cost').value = cost ? cost.toFixed(2) : '';
 
-      const shipPackCost = sell ? 100 : 0;
+      const shipPackCost = (sell && !consolidatedShip) ? 100 : 0;
       const activityFee = sell * 0.125;
       const miscBase = sell ? (shipPackCost + activityFee) : 0;
-      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03 + 100 * 0.11;
+      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03 + shipPackCost * 0.11;
       const misc = miscBase + returnCost;
       row.querySelector('.v-misc').value = misc ? misc.toFixed(2) : '';
 
