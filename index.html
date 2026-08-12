@@ -321,14 +321,15 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <label class="block text-gray-700 text-sm font-bold mb-2">匯入採購報表（xlsx）</label>
             <input type="file" id="poFile" accept=".xlsx,.xls" class="block">
           </div>
-          <button onclick="processPoFile()" class="bg-indigo-600 text-white py-2 px-5 rounded-lg hover:bg-indigo-700 font-medium">解析採購單</button>
           <div>
-            <label class="block text-gray-700 text-sm font-bold mb-2">倉庫客戶編號<span class="text-gray-400 font-normal text-xs ml-1">→ 顯示於嘜頭</span></label>
+            <label class="block text-gray-700 text-sm font-bold mb-2">倉庫客戶編號 <span class="text-red-400">*</span><span class="text-gray-400 font-normal text-xs ml-1">→ 顯示於嘜頭</span></label>
             <select id="markWarehouse" class="border rounded-lg px-3 py-2 text-sm">
+              <option value="">— 請選擇 —</option>
               <option value="21483｜張維成五權">21483（張維成五權）</option>
               <option value="14846｜米吉五工">14846（米吉五工）</option>
             </select>
           </div>
+          <button onclick="processPoFile()" class="bg-indigo-600 text-white py-2 px-5 rounded-lg hover:bg-indigo-700 font-medium">解析採購單</button>
         </div>
         <div id="poResults" class="space-y-6"></div>
       </div>
@@ -1580,6 +1581,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     async function processPoFile() {
       const file = document.getElementById('poFile').files[0];
       if (!file) { alert('請選擇採購報表檔案！'); return; }
+      // 倉庫客戶編號必選：預設留空，強迫使用者主動確認，避免沿用上一次的選擇而出錯
+      const whEl = document.getElementById('markWarehouse');
+      if (!whEl.value) {
+        alert('請先選擇「倉庫客戶編號」，這會印在嘜頭上。');
+        whEl.focus();
+        return;
+      }
       try {
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data);
@@ -1925,6 +1933,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     async function exportPoMarkPDF(vendor, vi, share = false) {
       const { items, orderNos, orderInfo } = poData[vendor];
       if (!items || items.length === 0) { alert('無資料'); return; }
+      if (!document.getElementById('markWarehouse').value) {
+        alert('請先選擇「倉庫客戶編號」再產生嘜頭。');
+        document.getElementById('markWarehouse').focus();
+        return;
+      }
 
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5' });
