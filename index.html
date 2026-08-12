@@ -1965,10 +1965,37 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
   <div id="tab-product" style="display:none" class="bg-gray-50 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 py-8">
 
-      <!-- 已儲存商品 -->
+      <!-- 共用商品庫 -->
       <div class="bg-white rounded-lg shadow-md p-4 mb-6">
         <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-semibold text-gray-600">📋 已儲存的商品</h3>
+          <h3 class="text-sm font-semibold text-gray-600">☁️ 共用商品庫<span class="font-normal text-gray-400 text-xs ml-2">同仁之間共通</span></h3>
+          <span id="shareStatus" class="text-xs text-gray-400">未連線</span>
+        </div>
+        <div id="shareLogin" class="flex flex-wrap items-end gap-2">
+          <div>
+            <label class="block text-xs text-gray-500 mb-0.5">通行碼<span class="text-gray-400">（同報價單）</span></label>
+            <input id="sharePassword" type="password" class="border rounded px-2 py-1 text-sm w-40" placeholder="輸入通行碼">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-0.5">你的名字<span class="text-gray-400">（記錄誰改的）</span></label>
+            <input id="shareUser" type="text" class="border rounded px-2 py-1 text-sm w-32" placeholder="例：Allen">
+          </div>
+          <button onclick="shareLogin()" class="bg-sky-600 text-white px-4 py-1.5 rounded text-sm hover:bg-sky-700">連線</button>
+        </div>
+        <div id="sharePanel" class="hidden">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
+            <button onclick="uploadAllLocal()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
+            <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
+          </div>
+          <div id="sharedProductList" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- 已儲存商品（本機） -->
+      <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-semibold text-gray-600">📋 本機儲存的商品</h3>
           <button onclick="deleteSavedProduct()" class="text-xs text-red-400 hover:text-red-600 hidden" id="deleteBtn">刪除目前商品記錄</button>
         </div>
         <div id="savedProductList" class="flex flex-wrap gap-2">
@@ -2635,7 +2662,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setTimeout(() => status.textContent = '', 2500);
     }
 
-    function manualSave() {
+    async function manualSave() {
       const code = pVal('p_code');
       if (!code) {
         alert('請先填寫商品編號再儲存');
@@ -2645,9 +2672,162 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       db[code] = collectFormData();
       setDB(db);
       renderSavedList();
+
       const status = document.getElementById('saveStatus');
       status.textContent = `💾 已儲存（${code}）`;
-      setTimeout(() => status.textContent = '', 2500);
+      if (shareToken) {
+        status.textContent = `💾 已存本機，上傳共用庫中…`;
+        const ok = await saveToShared(false);
+        status.textContent = ok ? `☁️ 已儲存到共用庫（${code}）` : `💾 已存本機，共用庫未更新（${code}）`;
+      }
+      setTimeout(() => status.textContent = '', 3000);
+    }
+
+    // ===== 共用商品庫（存於 didibox-api 的 KV，通行碼沿用報價單）=====
+    const SHARE_API   = 'https://api.didibox.cc';
+    const SHARE_TOKEN_KEY = 'productShareToken';
+    const SHARE_USER_KEY  = 'productShareUser';
+
+    let shareToken = localStorage.getItem(SHARE_TOKEN_KEY) || '';
+    let shareRole  = '';
+    let sharedList = [];
+    // 目前表單所根據的共用版本時間，用來偵測別人是否已改過
+    let loadedBaseUpdatedAt = null;
+
+    function setShareStatus(text, cls) {
+      const el = document.getElementById('shareStatus');
+      el.textContent = text;
+      el.className = 'text-xs ' + (cls || 'text-gray-400');
+    }
+
+    async function shareApi(path, options) {
+      const res = await fetch(SHARE_API + path, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', 'X-Quote-Token': shareToken, ...(options && options.headers) },
+      });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    async function shareLogin() {
+      const pwd  = document.getElementById('sharePassword').value.trim();
+      const user = document.getElementById('shareUser').value.trim();
+      if (!pwd)  { alert('請輸入通行碼'); return; }
+      if (!user) { alert('請輸入你的名字，這樣才知道商品是誰改的'); return; }
+
+      shareToken = pwd;
+      setShareStatus('連線中…');
+      const { ok, status, data } = await shareApi('/api/products');
+      if (!ok) {
+        shareToken = '';
+        setShareStatus(status === 401 ? '通行碼錯誤' : `連線失敗（${data.error || status}）`, 'text-red-500');
+        return;
+      }
+      localStorage.setItem(SHARE_TOKEN_KEY, pwd);
+      localStorage.setItem(SHARE_USER_KEY, user);
+      shareRole = data.role || '';
+      sharedList = data.list || [];
+      onShareConnected();
+    }
+
+    function onShareConnected() {
+      document.getElementById('shareLogin').classList.add('hidden');
+      document.getElementById('sharePanel').classList.remove('hidden');
+      setShareStatus(`已連線（${localStorage.getItem(SHARE_USER_KEY) || ''}${shareRole === 'admin' ? '・管理員' : ''}）`, 'text-green-600');
+      renderSharedList();
+    }
+
+    function shareLogout() {
+      shareToken = ''; shareRole = ''; sharedList = []; loadedBaseUpdatedAt = null;
+      localStorage.removeItem(SHARE_TOKEN_KEY);
+      document.getElementById('shareLogin').classList.remove('hidden');
+      document.getElementById('sharePanel').classList.add('hidden');
+      setShareStatus('未連線');
+    }
+
+    async function refreshSharedList() {
+      const { ok, data } = await shareApi('/api/products');
+      if (!ok) { setShareStatus('讀取失敗，請重新連線', 'text-red-500'); return; }
+      sharedList = data.list || [];
+      renderSharedList();
+    }
+
+    function renderSharedList() {
+      const box = document.getElementById('sharedProductList');
+      if (!sharedList.length) { box.innerHTML = '<span class="text-gray-400 text-xs">共用庫還沒有商品</span>'; return; }
+      const currentCode = pVal('p_code');
+      box.innerHTML = sharedList.map(it => {
+        const active = it.code === currentCode;
+        const when = (it.updatedAt || '').slice(0, 16).replace('T', ' ');
+        return `<button onclick="loadSharedProduct('${it.code}')"
+          class="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition-colors ${active
+            ? 'bg-sky-600 text-white border-sky-600'
+            : 'bg-white text-gray-700 border-gray-300 hover:border-sky-400 hover:text-sky-600'}"
+          title="最後修改：${when}${it.updatedBy ? ' by ' + it.updatedBy : ''}">
+          <span class="font-mono">${it.code}</span>
+          <span class="text-opacity-75">${it.name || ''}</span>
+          ${it.updatedBy ? `<span class="opacity-60">·${it.updatedBy}</span>` : ''}
+        </button>`;
+      }).join('');
+    }
+
+    async function loadSharedProduct(code) {
+      const { ok, data } = await shareApi(`/api/products/${encodeURIComponent(code)}`);
+      if (!ok) { alert('讀取失敗：' + (data.error || '')); return; }
+      const when = (data.updatedAt || '').slice(0, 16).replace('T', ' ');
+      if (!confirm(`從共用庫載入「${code} ${(data.data || {}).name || ''}」？\n最後修改：${when}${data.updatedBy ? ' by ' + data.updatedBy : ''}`)) return;
+      applyProductData(data.data);
+      loadedBaseUpdatedAt = data.updatedAt || '';
+      renderSharedList();
+    }
+
+    // 儲存到共用庫；偵測到別人已改過會先問過再決定是否覆蓋
+    async function saveToShared(force) {
+      const code = pVal('p_code').trim();
+      if (!code || !shareToken) return false;
+      const payload = {
+        data: collectFormData(),
+        baseUpdatedAt: loadedBaseUpdatedAt || '',
+        updatedBy: localStorage.getItem(SHARE_USER_KEY) || '',
+        force: !!force,
+      };
+      const { ok, status, data } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
+        method: 'PUT', body: JSON.stringify(payload),
+      });
+
+      if (status === 409) {
+        const when = (data.serverUpdatedAt || '').slice(0, 16).replace('T', ' ');
+        const msg = `⚠ 這個商品在你編輯期間已被${data.serverUpdatedBy ? ' ' + data.serverUpdatedBy + ' ' : '其他人'}修改過\n`
+                  + `（伺服器版本：${when}）\n\n`
+                  + `按「確定」用你目前畫面的內容覆蓋掉對方的修改\n`
+                  + `按「取消」則不儲存，你可以先重新載入看看對方改了什麼`;
+        if (confirm(msg)) return await saveToShared(true);
+        return false;
+      }
+      if (!ok) { alert('共用庫儲存失敗：' + (data.error || status)); return false; }
+
+      loadedBaseUpdatedAt = data.updatedAt || '';
+      await refreshSharedList();
+      return true;
+    }
+
+    // 把本機所有商品推上共用庫（首次連線時的搬家用）
+    async function uploadAllLocal() {
+      const db = getDB();
+      const codes = Object.keys(db);
+      if (!codes.length) { alert('本機沒有商品資料'); return; }
+      if (!confirm(`要把本機 ${codes.length} 個商品上傳到共用庫嗎？\n共用庫已存在的同編號商品會被覆蓋。`)) return;
+
+      let done = 0, failed = [];
+      for (const code of codes) {
+        const { ok } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ data: db[code], force: true, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+        });
+        ok ? done++ : failed.push(code);
+      }
+      await refreshSharedList();
+      alert(`上傳完成：成功 ${done} 個` + (failed.length ? `，失敗 ${failed.length} 個（${failed.join('、')}）` : ''));
     }
 
     function renderSavedList() {
@@ -2694,7 +2874,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const data = db[code];
       if (!data) return;
       if (!confirm(`載入商品「${data.code} ${data.name || ''}」？\n（儲存於 ${data.savedAt || '時間不明'}）`)) return;
+      applyProductData(data);
+      loadedBaseUpdatedAt = null;   // 由本機載入，非共用庫版本
+    }
 
+    // 將一份商品資料套用到表單（本機載入與共用庫載入共用）
+    function applyProductData(data) {
+      if (!data) return;
       const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
       setVal('p_code', data.code);     setVal('p_name', data.name);
       setVal('p_vendor', data.vendor); setVal('p_preorder_note', data.preorderNote);
@@ -2772,6 +2958,19 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       addVariantRow();
       renderSavedList();
+
+      // 記住過通行碼就自動重新連線共用庫
+      const savedUser = localStorage.getItem(SHARE_USER_KEY) || '';
+      if (savedUser) document.getElementById('shareUser').value = savedUser;
+      if (shareToken) {
+        document.getElementById('sharePassword').value = shareToken;
+        shareApi('/api/products').then(({ ok, data }) => {
+          if (!ok) { shareToken = ''; setShareStatus('通行碼已失效，請重新連線', 'text-red-500'); return; }
+          shareRole = data.role || '';
+          sharedList = data.list || [];
+          onShareConnected();
+        }).catch(() => setShareStatus('共用庫連線失敗', 'text-red-500'));
+      }
     });
 
     // ===== 取得規格資料 =====
