@@ -2683,7 +2683,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // ===== 共用商品庫（存於 didibox-api 的 KV，通行碼沿用報價單）=====
-    const SHARE_API   = 'https://api.didibox.cc';
+    // didibox-api 的位址，報價單與共用商品庫共用（QUOTE_API 亦指向此處）
+    const DIDIBOX_API = 'https://didibox-api.adam-061.workers.dev';
+    const SHARE_API   = DIDIBOX_API;
     const SHARE_TOKEN_KEY = 'productShareToken';
     const SHARE_USER_KEY  = 'productShareUser';
 
@@ -4113,7 +4115,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
   <script>
     // =================== 報價單 ===================
-    const QUOTE_API = 'https://didibox-api.adam-061.workers.dev';
+    const QUOTE_API = DIDIBOX_API;
     let quoteToken = sessionStorage.getItem('quoteToken') || '';
     let quoteRole  = sessionStorage.getItem('quoteRole')  || '';
     let currentQuote = null;

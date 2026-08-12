@@ -5,6 +5,8 @@ import { zipSync } from 'fflate';
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   'https://didibox.cc',
+  'https://white81817.github.io',        // GitHub Pages
+  'https://r2-link-generator.pages.dev', // Cloudflare Pages
   'https://ec.mallbic.com',
   'https://admin.1shop.tw',
   'https://scm.mamilove.com.tw',
