@@ -2183,9 +2183,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-yellow-100">售價<br><span class="font-normal text-gray-400">手填</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-green-100">特價<br><span class="font-normal text-gray-400">=售價</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-blue-100">原價<br><span class="font-normal text-gray-400">÷0.8整十</span></th>
-                <th class="border px-2 py-2 text-right bg-purple-100">毛利率<br><span class="font-normal text-gray-400 whitespace-normal">至少黃燈、建議39%以上較安全</span></th>
+                <th class="border px-2 py-2 text-right bg-purple-100">毛利率<br><span class="font-normal text-gray-400 whitespace-normal">需🟢，38%以上</span></th>
                 <th class="border px-2 py-2 text-right bg-orange-100">蝦皮售價<br><span class="font-normal text-gray-400">手填</span></th>
-                <th class="border px-2 py-2 text-right bg-orange-50">蝦皮毛利率<br><span class="font-normal text-gray-400 whitespace-normal">目標29%~34%</span></th>
+                <th class="border px-2 py-2 text-right bg-orange-50">蝦皮毛利率<br><span class="font-normal text-gray-400 whitespace-normal">需🟢，29%以上</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">現貨庫存</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">預購數量</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">安全庫存</th>
@@ -2199,7 +2199,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <tbody id="variantRows"></tbody>
           </table>
         </div>
-        <p class="text-xs text-red-400 mt-2">⚠ 毛利率 🟢 很好， 🟡正常， 🔴 危險<br>不要定到紅色圓點 🔴，廣告成本率控制在 25%，超過的話危險</p>
+        <p class="text-xs text-red-400 mt-2">⚠ 毛利率 🟢 合格， 🔴 危險<br>不要定到紅色圓點 🔴，廣告成本率控制在 25%，超過的話危險</p>
       </div>
 
       <!-- 匯出按鈕 -->
@@ -2263,31 +2263,27 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       row.querySelector('.v-orig').value = sell ? Math.round((sell / 0.8) / 10) * 10 : '';
 
       // 官網／momo 毛利率
-      renderMarginCell(row.querySelector('.v-margin'), sell, cost, flags, 0.44, 0.38);
+      renderMarginCell(row.querySelector('.v-margin'), sell, cost, flags, MARGIN_PASS_DEFAULT);
 
       // 蝦皮毛利率（依手填的蝦皮售價計算，成本公式與官網相同）
       const shopeeSell = parseFloat(row.querySelector('.v-shopee-sell').value) || 0;
-      renderMarginCell(row.querySelector('.v-shopee-margin'), shopeeSell, cost, flags,
-                       SHOPEE_MARGIN_GOOD, SHOPEE_MARGIN_NORMAL);
+      renderMarginCell(row.querySelector('.v-shopee-margin'), shopeeSell, cost, flags, MARGIN_PASS_SHOPEE);
     }
 
-    // 將毛利率算出並以燈號＋百分比呈現
-    function renderMarginCell(el, sell, cost, flags, goodThreshold, normalThreshold) {
+    // 將毛利率算出並以燈號＋百分比呈現（只有合格🟢與危險🔴兩級）
+    function renderMarginCell(el, sell, cost, flags, passThreshold) {
       if (!el) return;
       if (!sell || !cost) { el.value = ''; el.title = ''; return; }
       const margin = calcMargin(sell, cost, flags);
-      let icon, label;
-      if (margin >= goodThreshold)        { icon = '🟢'; label = '很好'; }
-      else if (margin >= normalThreshold) { icon = '🟡'; label = '正常'; }
-      else                                { icon = '🔴'; label = '危險'; }
-      el.value = icon + ' ' + (margin * 100).toFixed(1) + '%';
-      el.title = label;
+      const pass = margin >= passThreshold;
+      el.value = (pass ? '🟢' : '🔴') + ' ' + (margin * 100).toFixed(1) + '%';
+      el.title = pass ? '合格' : '危險';
     }
 
     // ===== 成本計算共用函式（單一事實來源） =====
-    // 蝦皮毛利率燈號門檻（目標區間 29%~34%）
-    const SHOPEE_MARGIN_GOOD   = 0.34;
-    const SHOPEE_MARGIN_NORMAL = 0.29;
+    // 毛利率合格門檻（達標為🟢，未達為🔴）
+    const MARGIN_PASS_DEFAULT = 0.38;   // 官網／momo
+    const MARGIN_PASS_SHOPEE  = 0.29;   // 蝦皮
 
     function getCostTagFlags() {
       const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
