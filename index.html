@@ -2100,6 +2100,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-green-100">特價<br><span class="font-normal text-gray-400">=售價</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-blue-100">原價<br><span class="font-normal text-gray-400">÷0.8整十</span></th>
                 <th class="border px-2 py-2 text-right bg-purple-100">毛利率<br><span class="font-normal text-gray-400 whitespace-normal">至少黃燈、建議39%以上較安全</span></th>
+                <th class="border px-2 py-2 text-right bg-orange-100">蝦皮建議售價<br><span class="font-normal text-gray-400 whitespace-normal">毛利率29%~34%</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">現貨庫存</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">預購數量</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">安全庫存</th>
@@ -2155,41 +2156,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const wholesale = parseFloat(row.querySelector('.v-wholesale').value) || 0;
       const weight    = parseFloat(row.querySelector('.v-weight').value) || 0;
       const sell      = parseFloat(row.querySelector('.v-sell').value) || 0;
-      const adCost    = sell * 0.25;
-      const barcode   = row.querySelector('.v-barcode').value.trim().toUpperCase();
+      const flags = getCostTagFlags();
 
-      const cnyRate = 4.55;
-      const krwRate = 0.023;
-      const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
-      const isChina  = tags.includes('大陸廠商');
-      const isTaiwan = tags.includes('台灣廠商');
-      const isKorea  = tags.includes('韓國廠商');
-      const freeShip = tags.includes('廠商出貨包運費');
-      const consolidatedShip = tags.includes('集運出客人');
-
-      let cost = 0;
-      if (isChina) {
-        cost = freeShip
-          ? wholesale * cnyRate + weight * 5 + weight * 7 * 4.55
-          : wholesale * cnyRate + weight * 5 + weight * 10 + weight * 7 * 4.55;
-      } else if (isTaiwan) {
-        cost = freeShip
-          ? wholesale
-          : wholesale + weight * 10;
-      } else if (isKorea) {
-        cost = freeShip
-          ? wholesale * krwRate + weight * 115 + weight * 5
-          : wholesale * krwRate + weight * 10 + weight * 115 + weight * 5;
-      } else {
-        cost = wholesale * cnyRate + weight * 12 * 4.5;
-      }
+      const cost = calcStockCost(wholesale, weight, flags);
       row.querySelector('.v-cost').value = cost ? cost.toFixed(2) : '';
 
-      const shipPackCost = (sell && !consolidatedShip) ? 100 : 0;
-      const activityFee = sell * 0.125;
-      const miscBase = sell ? (shipPackCost + activityFee) : 0;
-      const returnCost = adCost * 0.11 + 12 * 0.08 + 80 * 0.03 + 100 * 0.11;
-      const misc = miscBase + returnCost;
+      const misc = calcMiscCost(sell, flags);
       row.querySelector('.v-misc').value = misc ? misc.toFixed(2) : '';
 
       row.querySelector('.v-spec').value = sell || '';
@@ -2197,8 +2169,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const marginEl = row.querySelector('.v-margin');
       if (sell && cost) {
-        const customerFee = sell < 1000 ? 80 : 0;
-        const margin = (sell + customerFee - cost - misc) / (sell + customerFee);
+        const margin = calcMargin(sell, cost, flags);
         let icon, label;
         if (margin >= 0.44)      { icon = '🟢'; label = '很好'; }
         else if (margin >= 0.38) { icon = '🟡'; label = '正常'; }
@@ -2209,6 +2180,97 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         marginEl.value = '';
         marginEl.title = '';
       }
+
+      // 蝦皮建議售價：反推達到目標毛利率區間所需的售價
+      const shopeeEl = row.querySelector('.v-shopee-price');
+      if (shopeeEl) {
+        if (cost) {
+          const low  = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags);
+          const high = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags);
+          shopeeEl.value = (low && high) ? `${low} ~ ${high}` : '';
+          shopeeEl.title = `毛利率 ${(SHOPEE_MARGIN_MIN*100).toFixed(0)}%~${(SHOPEE_MARGIN_MAX*100).toFixed(0)}% 對應售價`;
+        } else {
+          shopeeEl.value = '';
+          shopeeEl.title = '';
+        }
+      }
+    }
+
+    // ===== 成本計算共用函式（單一事實來源） =====
+    const SHOPEE_MARGIN_MIN = 0.29;
+    const SHOPEE_MARGIN_MAX = 0.34;
+
+    function getCostTagFlags() {
+      const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
+      return {
+        isChina:          tags.includes('大陸廠商'),
+        isTaiwan:         tags.includes('台灣廠商'),
+        isKorea:          tags.includes('韓國廠商'),
+        freeShip:         tags.includes('廠商出貨包運費'),
+        consolidatedShip: tags.includes('集運出客人'),
+      };
+    }
+
+    // 存貨成本：依廠商類型與是否廠商包運費
+    function calcStockCost(wholesale, weight, flags) {
+      const cnyRate = 4.55;
+      const krwRate = 0.023;
+      const { isChina, isTaiwan, isKorea, freeShip } = flags;
+      if (isChina) {
+        return freeShip
+          ? wholesale * cnyRate + weight * 5 + weight * 7 * 4.55
+          : wholesale * cnyRate + weight * 5 + weight * 10 + weight * 7 * 4.55;
+      }
+      if (isTaiwan) {
+        return freeShip ? wholesale : wholesale + weight * 10;
+      }
+      if (isKorea) {
+        return freeShip
+          ? wholesale * krwRate + weight * 115 + weight * 5
+          : wholesale * krwRate + weight * 10 + weight * 115 + weight * 5;
+      }
+      return wholesale * cnyRate + weight * 12 * 4.5;
+    }
+
+    // 雜項成本 = 基礎雜項成本（出貨運費包材＋活動系統稅金服務費）＋退貨損失成本
+    function calcMiscCost(sell, flags) {
+      if (!sell) return 0;
+      const adCost       = sell * 0.25;
+      const shipPackCost = flags.consolidatedShip ? 0 : 100;
+      const activityFee  = sell * 0.125;
+      const miscBase     = shipPackCost + activityFee;
+      const returnCost   = adCost * 0.11 + 12 * 0.08 + 80 * 0.03 + 100 * 0.11;
+      return miscBase + returnCost;
+    }
+
+    // 毛利率 =（售價＋客人負擔費用－存貨成本－雜項成本）/（售價＋客人負擔費用）
+    function calcMargin(sell, cost, flags) {
+      const customerFee = sell < 1000 ? 80 : 0;
+      return (sell + customerFee - cost - calcMiscCost(sell, flags)) / (sell + customerFee);
+    }
+
+    // 反推：達到目標毛利率所需的最低售價
+    // 售價1000元處有斷點（低於1000才向客人收80元運費），毛利率在此不連續，
+    // 因此分兩段各自二分搜尋（單段內為單調遞增），再取較低的可行售價。
+    function suggestPriceForMargin(targetMargin, cost, flags) {
+      const solveIn = (lo, hi) => {
+        if (calcMargin(hi, cost, flags) < targetMargin) return null;
+        if (calcMargin(lo, cost, flags) >= targetMargin) return lo;
+        for (let i = 0; i < 60; i++) {
+          const mid = (lo + hi) / 2;
+          if (calcMargin(mid, cost, flags) < targetMargin) lo = mid; else hi = mid;
+        }
+        return hi;
+      };
+
+      const below = solveIn(1, 999.999);
+      if (below !== null) {
+        const p = Math.ceil(below);
+        // 無條件進位可能跨過1000的斷點導致毛利率反而不足，需驗證
+        if (calcMargin(p, cost, flags) >= targetMargin - 1e-9) return p;
+      }
+      const above = solveIn(1000, 499999);
+      return above === null ? null : Math.ceil(above);
     }
 
     function recalcAllVariants() {
@@ -2285,6 +2347,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <td class="border px-1 py-1 bg-green-50"><input class="v-spec w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-blue-50"><input class="v-orig w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-purple-50 text-center"><input class="v-margin w-16 border-0 bg-transparent px-1 text-sm text-center" type="text" readonly tabindex="-1"></td>
+        <td class="border px-1 py-1 bg-orange-50 text-center"><input class="v-shopee-price w-24 border-0 bg-transparent px-1 text-sm text-center text-gray-600" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1"><input class="v-stock w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.stock||0}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-preorder w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.preorder??500}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-safety w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.safety??'0'}" placeholder="0"

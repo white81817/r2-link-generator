@@ -42,6 +42,35 @@ export default {
       }
     }
 
+    // GET /api/list-images?prefix=xxx — 列出 shaner-assets 該路徑下所有圖片
+    if (request.method === 'GET' && url.pathname === '/api/list-images') {
+      try {
+        const prefix = url.searchParams.get('prefix') || '';
+        const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|avif)$/i;
+
+        const keys = [];
+        let cursor;
+        do {
+          const listed = await env.ASSETS_BUCKET.list({ prefix, limit: 1000, cursor });
+          for (const obj of listed.objects) {
+            if (IMAGE_EXT.test(obj.key)) keys.push(obj.key);
+          }
+          cursor = listed.truncated ? listed.cursor : undefined;
+        } while (cursor);
+
+        // 依檔名中的數字自然排序（1.jpg < 2.jpg < 10.jpg）
+        keys.sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true, sensitivity: 'base' }));
+
+        return new Response(JSON.stringify({ prefix, count: keys.length, keys }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // GET /file/:id — 從 R2 讀取並回傳 PDF
     if (request.method === 'GET' && url.pathname.startsWith('/file/')) {
       const id = url.pathname.slice('/file/'.length);
