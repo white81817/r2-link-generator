@@ -2288,10 +2288,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const shopeeEl = row.querySelector('.v-shopee-price');
       if (shopeeEl) {
         if (cost) {
-          const low  = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags);
-          const high = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags);
+          const low  = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags, SHOPEE_OPTS);
+          const high = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags, SHOPEE_OPTS);
           shopeeEl.value = (low && high) ? `${low} ~ ${high}` : '';
-          shopeeEl.title = `毛利率 ${(SHOPEE_MARGIN_MIN*100).toFixed(0)}%~${(SHOPEE_MARGIN_MAX*100).toFixed(0)}% 對應售價`;
+          shopeeEl.title = `毛利率 ${(SHOPEE_MARGIN_MIN*100).toFixed(0)}%~${(SHOPEE_MARGIN_MAX*100).toFixed(0)}%（廣告成本率 ${(AD_RATE_SHOPEE*100).toFixed(0)}%）對應售價`;
         } else {
           shopeeEl.value = '';
           shopeeEl.title = '';
@@ -2302,6 +2302,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // ===== 成本計算共用函式（單一事實來源） =====
     const SHOPEE_MARGIN_MIN = 0.29;
     const SHOPEE_MARGIN_MAX = 0.34;
+    const AD_RATE_DEFAULT = 0.25;   // 官網／momo 廣告成本率
+    const AD_RATE_SHOPEE  = 0.15;   // 蝦皮廣告成本率
+    const SHOPEE_OPTS = { adRate: AD_RATE_SHOPEE };
 
     function getCostTagFlags() {
       const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
@@ -2336,9 +2339,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // 雜項成本 = 基礎雜項成本（出貨運費包材＋活動系統稅金服務費）＋退貨損失成本
-    function calcMiscCost(sell, flags) {
+    // opts.adRate 可指定廣告成本率（蝦皮 15%，官網／momo 25%）
+    function calcMiscCost(sell, flags, opts) {
       if (!sell) return 0;
-      const adCost       = sell * 0.25;
+      const adRate       = (opts && opts.adRate !== undefined) ? opts.adRate : AD_RATE_DEFAULT;
+      const adCost       = sell * adRate;
       const shipPackCost = flags.consolidatedShip ? 0 : 100;
       const activityFee  = sell * 0.125;
       const miscBase     = shipPackCost + activityFee;
@@ -2347,21 +2352,21 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // 毛利率 =（售價＋客人負擔費用－存貨成本－雜項成本）/（售價＋客人負擔費用）
-    function calcMargin(sell, cost, flags) {
+    function calcMargin(sell, cost, flags, opts) {
       const customerFee = sell < 1000 ? 80 : 0;
-      return (sell + customerFee - cost - calcMiscCost(sell, flags)) / (sell + customerFee);
+      return (sell + customerFee - cost - calcMiscCost(sell, flags, opts)) / (sell + customerFee);
     }
 
     // 反推：達到目標毛利率所需的最低售價
     // 售價1000元處有斷點（低於1000才向客人收80元運費），毛利率在此不連續，
     // 因此分兩段各自二分搜尋（單段內為單調遞增），再取較低的可行售價。
-    function suggestPriceForMargin(targetMargin, cost, flags) {
+    function suggestPriceForMargin(targetMargin, cost, flags, opts) {
       const solveIn = (lo, hi) => {
-        if (calcMargin(hi, cost, flags) < targetMargin) return null;
-        if (calcMargin(lo, cost, flags) >= targetMargin) return lo;
+        if (calcMargin(hi, cost, flags, opts) < targetMargin) return null;
+        if (calcMargin(lo, cost, flags, opts) >= targetMargin) return lo;
         for (let i = 0; i < 60; i++) {
           const mid = (lo + hi) / 2;
-          if (calcMargin(mid, cost, flags) < targetMargin) lo = mid; else hi = mid;
+          if (calcMargin(mid, cost, flags, opts) < targetMargin) lo = mid; else hi = mid;
         }
         return hi;
       };
@@ -2370,7 +2375,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (below !== null) {
         const p = Math.ceil(below);
         // 無條件進位可能跨過1000的斷點導致毛利率反而不足，需驗證
-        if (calcMargin(p, cost, flags) >= targetMargin - 1e-9) return p;
+        if (calcMargin(p, cost, flags, opts) >= targetMargin - 1e-9) return p;
       }
       const above = solveIn(1000, 499999);
       return above === null ? null : Math.ceil(above);
@@ -2877,8 +2882,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     // 蝦皮匯出用售價：取目標毛利率區間的中位數並取整十，超出區間則退回下限
     function shopeeExportPrice(cost, flags) {
-      const lo = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags);
-      const hi = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags);
+      const lo = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags, SHOPEE_OPTS);
+      const hi = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags, SHOPEE_OPTS);
       if (!lo || !hi) return '';
       const mid = Math.round((lo + hi) / 2 / 10) * 10;
       return (mid >= lo && mid <= hi) ? mid : lo;
