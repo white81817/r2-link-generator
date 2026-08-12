@@ -32,7 +32,13 @@ function corsHeaders(origin) {
 const app = new Hono();
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+// version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
+app.get('/api/health', (c) => c.json({
+  status: 'ok',
+  version: '2026-08-12-products',
+  features: ['erp', 'cache', 'quotes', 'products'],
+  timestamp: new Date().toISOString(),
+}));
 
 // ── Cache ─────────────────────────────────────────────────────────────────────
 // POST /api/cache  body: { key, value, ttl? }
