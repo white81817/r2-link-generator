@@ -2331,19 +2331,19 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       row.querySelector('.v-spec').value = sell || '';
       row.querySelector('.v-orig').value = sell ? Math.round((sell / 0.8) / 10) * 10 : '';
 
-      // 官網／momo 毛利率
-      renderMarginCell(row.querySelector('.v-margin'), sell, cost, flags, MARGIN_PASS_DEFAULT);
+      // 官網／momo 毛利率（廣告成本率 25%）
+      renderMarginCell(row.querySelector('.v-margin'), sell, cost, flags, MARGIN_PASS_DEFAULT, AD_RATE_DEFAULT);
 
-      // 蝦皮毛利率（依手填的蝦皮售價計算，成本公式與官網相同）
+      // 蝦皮毛利率（依手填的蝦皮售價計算，廣告成本率 5%）
       const shopeeSell = parseFloat(row.querySelector('.v-shopee-sell').value) || 0;
-      renderMarginCell(row.querySelector('.v-shopee-margin'), shopeeSell, cost, flags, MARGIN_PASS_SHOPEE);
+      renderMarginCell(row.querySelector('.v-shopee-margin'), shopeeSell, cost, flags, MARGIN_PASS_SHOPEE, AD_RATE_SHOPEE);
     }
 
     // 將毛利率算出並以燈號＋百分比呈現（只有合格🟢與危險🔴兩級）
-    function renderMarginCell(el, sell, cost, flags, passThreshold) {
+    function renderMarginCell(el, sell, cost, flags, passThreshold, adRate) {
       if (!el) return;
       if (!sell || !cost) { el.value = ''; el.title = ''; return; }
-      const margin = calcMargin(sell, cost, flags);
+      const margin = calcMargin(sell, cost, flags, adRate);
       const pass = margin >= passThreshold;
       el.value = (pass ? '🟢' : '🔴') + ' ' + (margin * 100).toFixed(1) + '%';
       el.title = pass ? '合格' : '危險';
@@ -2353,6 +2353,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // 毛利率合格門檻（達標為🟢，未達為🔴）
     const MARGIN_PASS_DEFAULT = 0.39;   // 官網／momo
     const MARGIN_PASS_SHOPEE  = 0.29;   // 蝦皮
+    // 廣告成本率：影響退貨損失成本中的廣告成本項
+    const AD_RATE_DEFAULT = 0.25;       // 官網／momo
+    const AD_RATE_SHOPEE  = 0.05;       // 蝦皮
 
     function getCostTagFlags() {
       const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
@@ -2387,9 +2390,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // 雜項成本 = 基礎雜項成本（出貨運費包材＋活動系統稅金服務費）＋退貨損失成本
-    function calcMiscCost(sell, flags) {
+    // adRate 為廣告成本率，未指定時採官網／momo 的 25%
+    function calcMiscCost(sell, flags, adRate) {
       if (!sell) return 0;
-      const adCost       = sell * 0.25;
+      const rate         = (adRate === undefined) ? AD_RATE_DEFAULT : adRate;
+      const adCost       = sell * rate;
       const shipPackCost = flags.consolidatedShip ? 0 : 100;
       const activityFee  = sell * 0.125;
       const miscBase     = shipPackCost + activityFee;
@@ -2398,9 +2403,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // 毛利率 =（售價＋客人負擔費用－存貨成本－雜項成本）/（售價＋客人負擔費用）
-    function calcMargin(sell, cost, flags) {
+    function calcMargin(sell, cost, flags, adRate) {
       const customerFee = sell < 1000 ? 80 : 0;
-      return (sell + customerFee - cost - calcMiscCost(sell, flags)) / (sell + customerFee);
+      return (sell + customerFee - cost - calcMiscCost(sell, flags, adRate)) / (sell + customerFee);
     }
 
     // ===== R2 商品圖片 =====
