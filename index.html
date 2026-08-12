@@ -14,6 +14,32 @@
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 
   <style>
+    /* ===== 補齊 Tailwind 2.2 預設調色盤沒有的色系 =====
+       v2 預設只有 gray/red/yellow/green/blue/indigo/purple/pink，
+       用到 orange/sky/teal/amber 的 class 不存在會變透明，故在此補上（色值取自 Tailwind 官方）。 */
+    .bg-orange-50  { background-color:#fff7ed }
+    .bg-orange-100 { background-color:#ffedd5 }
+    .bg-orange-500 { background-color:#f97316 }
+    .hover\:bg-orange-600:hover { background-color:#ea580c }
+    .border-orange-200 { border-color:#fed7aa }
+    .text-orange-700 { color:#c2410c }
+    .text-orange-800 { color:#9a3412 }
+
+    .bg-sky-600 { background-color:#0284c7 }
+    .hover\:bg-sky-700:hover { background-color:#0369a1 }
+    .border-sky-600 { border-color:#0284c7 }
+    .hover\:border-sky-400:hover { border-color:#38bdf8 }
+    .text-sky-600 { color:#0284c7 }
+    .hover\:text-sky-600:hover { color:#0284c7 }
+
+    .bg-teal-50  { background-color:#f0fdfa }
+    .bg-teal-600 { background-color:#0d9488 }
+    .hover\:bg-teal-700:hover { background-color:#0f766e }
+    .hover\:ring-teal-400:hover { --tw-ring-color:#2dd4bf; box-shadow:0 0 0 2px #2dd4bf }
+
+    .bg-amber-100 { background-color:#fef3c7 }
+    .hover\:bg-amber-200:hover { background-color:#fde68a }
+
     /* =================== 分頁導航 =================== */
     .tab-nav {
       display: flex;
