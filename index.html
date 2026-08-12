@@ -2243,10 +2243,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <button onclick="exportMomoXLSX()" class="bg-pink-600 text-white px-6 py-2 rounded-lg hover:bg-pink-700 font-medium">
           ⬇ 匯出 momo上架格式
         </button>
-        <label class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 font-medium cursor-pointer self-center text-sm" title="蝦皮若更新模板格式，可在此上傳新模板覆蓋內建表頭">
-          🔄 更新蝦皮模板
-          <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importShopeeTemplate(event)">
-        </label>
         <button onclick="clearProductForm()" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium">
           清除全部
         </button>
@@ -2365,9 +2361,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     let imageMessage = { text: '', isError: false };
 
     // momoAd＝momo 廣告圖(O圖)，只能一張，故為單選
-    const PLATFORM_LABEL  = { shopee: '蝦', momo: 'mo', usale: 'US', momoAd: '廣' };
+    const PLATFORM_LABEL  = { shopee: '蝦皮', momo: 'momo', usale: 'USALE', momoAd: '廣告' };
     const PLATFORM_COLOR  = { shopee: 'bg-orange-500', momo: 'bg-pink-600', usale: 'bg-green-600', momoAd: 'bg-purple-600' };
-    const PLATFORM_HINT   = { shopee: '蝦皮', momo: 'momo主圖/專推圖', usale: 'USALE', momoAd: 'momo廣告圖(限1張)' };
+    const PLATFORM_HINT   = { shopee: '蝦皮：主商品圖片＋商品圖片1~8', momo: 'momo：主圖(B圖)＋專推圖', usale: 'USALE：商品圖外部連結', momoAd: 'momo 廣告圖(O圖)，限1張' };
     const SINGLE_SELECT   = { momoAd: true };
     const IMAGE_PLATFORMS = ['shopee', 'momo', 'momoAd', 'usale'];
 
@@ -2428,33 +2424,36 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const platforms = IMAGE_PLATFORMS;
       const toolbar = `
-        <div class="w-full flex flex-wrap items-center gap-3 mb-1 text-xs">
-          ${platforms.map(pf => `
-            <span class="inline-flex items-center gap-1" title="${PLATFORM_HINT[pf]}">
-              <span class="${PLATFORM_COLOR[pf]} text-white rounded px-1.5 py-0.5">${PLATFORM_LABEL[pf]}</span>
-              <span class="text-gray-500">${getPlatformImages(pf).length}張</span>
-              ${SINGLE_SELECT[pf] ? '' : `<button onclick="selectAllImages('${pf}', true)" class="text-blue-500 hover:underline">全選</button>`}
-              <button onclick="selectAllImages('${pf}', false)" class="text-gray-400 hover:underline">清除</button>
-            </span>`).join('')}
-          <span class="text-gray-400">｜點數字鈕加入／移除，數字1為主圖；規格圖在下方規格表逐列選</span>
+        <div class="w-full mb-2">
+          <div class="flex flex-wrap gap-2 text-xs">
+            ${platforms.map(pf => `
+              <span class="inline-flex items-center gap-1.5 border rounded px-2 py-1 bg-gray-50" title="${PLATFORM_HINT[pf]}">
+                <span class="${PLATFORM_COLOR[pf]} text-white rounded px-1.5 py-0.5 font-bold">${PLATFORM_LABEL[pf]}</span>
+                <span class="text-gray-600">已選 <b>${getPlatformImages(pf).length}</b> 張</span>
+                ${SINGLE_SELECT[pf] ? '' : `<button onclick="selectAllImages('${pf}', true)" class="text-blue-500 hover:underline">全選</button>`}
+                <button onclick="selectAllImages('${pf}', false)" class="text-gray-400 hover:underline">清除</button>
+              </span>`).join('')}
+          </div>
+          <div class="text-xs text-gray-400 mt-1">點按鈕加入／移除，按鈕上的數字是該平台的順序，1為主圖；規格圖在下方規格表逐列選</div>
         </div>`;
 
       const cards = productImages.map((src, i) => {
+        // 四顆按鈕排成 2×2，單列塞四顆會擠到文字溢出卡片
         const btns = platforms.map(pf => {
           const pos = imageSelection[pf].indexOf(i);
           const on = pos >= 0;
           return `<button onclick="toggleImageSelect('${pf}', ${i})"
-            class="flex-1 text-[10px] leading-none py-1 rounded ${on ? PLATFORM_COLOR[pf] + ' text-white font-bold' : 'bg-gray-200 text-gray-500'}"
-            title="${on ? '點擊移除' : '點擊加入'}${PLATFORM_LABEL[pf]}">${PLATFORM_LABEL[pf]}${on ? pos + 1 : ''}</button>`;
+            class="text-[10px] leading-none py-1 rounded truncate ${on ? PLATFORM_COLOR[pf] + ' text-white font-bold' : 'bg-gray-200 text-gray-500'}"
+            title="${PLATFORM_HINT[pf]}｜${on ? '點擊移除' : '點擊加入'}">${PLATFORM_LABEL[pf]}${on ? ' ' + (pos + 1) : ''}</button>`;
         }).join('');
         const fileName = decodeURIComponent(src.split('/').pop());
         return `
-          <div class="border rounded p-1" style="width:92px">
+          <div class="border rounded p-1" style="width:124px">
             <a href="${src}" target="_blank" title="${fileName}">
-              <img src="${src}" class="w-full h-16 object-cover rounded hover:ring-2 hover:ring-teal-400">
+              <img src="${src}" class="w-full h-20 object-cover rounded hover:ring-2 hover:ring-teal-400">
             </a>
             <div class="text-[10px] text-gray-600 truncate mt-0.5" title="${fileName}">${fileName}</div>
-            <div class="flex gap-0.5 mt-1">${btns}</div>
+            <div class="grid grid-cols-2 gap-0.5 mt-1">${btns}</div>
           </div>`;
       }).join('');
 
@@ -3128,7 +3127,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return SHOPEE_HEADER_DEFAULT;
     }
 
-    // 讀取使用者上傳的蝦皮模板，取前6列作為表頭
+    // 讀取蝦皮模板取前6列作為表頭。
+    // 入口按鈕已收起，保留此函式供之後改為「選擇賣場」時沿用。
     async function importShopeeTemplate(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -3212,7 +3212,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       // 第2列的模板識別碼與賣場ID為賣場專屬，內建表頭已清空，需由各賣場自行上傳模板帶入
       if (!String(header[1] && header[1][1] || '').trim()) {
-        notes.push('・此檔未帶賣場識別碼。若上傳蝦皮被退件，請到該賣場後台下載模板，用「🔄 更新蝦皮模板」上傳一次即可。');
+        notes.push('・此檔未帶賣場識別碼。若上傳蝦皮被退件，請提供該賣場的模板，之後可改為直接選賣場。');
       }
       if (notes.length) alert('匯出完成，請留意：\n\n' + notes.join('\n'));
     }
