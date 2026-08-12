@@ -2010,10 +2010,33 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         </div>
         <div id="sharePanel" class="hidden">
           <div class="flex flex-wrap items-center gap-2 mb-2">
+            <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="renderSharedList()">
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
-            <button onclick="uploadAllLocal()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
+            <button onclick="openUploadPicker()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
+            <span id="shareCount" class="text-xs text-gray-400"></span>
           </div>
+
+          <!-- 選擇要上傳的本機商品 -->
+          <div id="uploadPicker" class="hidden border rounded p-3 mb-2 bg-amber-50">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-gray-700">選擇要上傳到共用庫的本機商品</span>
+              <span class="text-xs">
+                <button onclick="toggleAllUploadPick(true)" class="text-blue-500 hover:underline">全選</button>
+                <button onclick="toggleAllUploadPick(false)" class="text-gray-400 hover:underline ml-2">全不選</button>
+              </span>
+            </div>
+            <div id="uploadPickList" class="max-h-52 overflow-y-auto bg-white border rounded p-2 mb-2"></div>
+            <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-2 cursor-pointer">
+              <input type="checkbox" id="removeLocalAfterUpload" class="w-4 h-4">
+              上傳成功後，把這些商品從本機儲存中移除（共用庫已有一份，不需重複保留）
+            </label>
+            <div class="flex gap-2">
+              <button onclick="doUploadSelected()" class="bg-amber-100 hover:bg-amber-200 text-xs rounded px-3 py-1.5 font-medium">開始上傳</button>
+              <button onclick="closeUploadPicker()" class="text-xs text-gray-400 hover:text-gray-600 px-2">取消</button>
+            </div>
+          </div>
+
           <div id="sharedProductList" class="flex flex-wrap gap-2"></div>
         </div>
       </div>
@@ -2781,21 +2804,108 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function renderSharedList() {
       const box = document.getElementById('sharedProductList');
+      const kw = (document.getElementById('shareSearch').value || '').trim().toLowerCase();
+      const shown = kw
+        ? sharedList.filter(it => `${it.code} ${it.name || ''} ${it.updatedBy || ''}`.toLowerCase().includes(kw))
+        : sharedList;
+
+      document.getElementById('shareCount').textContent =
+        sharedList.length ? `共 ${sharedList.length} 筆${kw ? `，符合 ${shown.length} 筆` : ''}` : '';
+
       if (!sharedList.length) { box.innerHTML = '<span class="text-gray-400 text-xs">共用庫還沒有商品</span>'; return; }
+      if (!shown.length)      { box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; return; }
+
       const currentCode = pVal('p_code');
-      box.innerHTML = sharedList.map(it => {
+      box.innerHTML = shown.map(it => {
         const active = it.code === currentCode;
         const when = (it.updatedAt || '').slice(0, 16).replace('T', ' ');
-        return `<button onclick="loadSharedProduct('${it.code}')"
-          class="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition-colors ${active
+        // 刪除需管理員權限，非管理員不顯示按鈕
+        const delBtn = shareRole === 'admin'
+          ? `<button onclick="deleteSharedProduct('${it.code}')"
+               class="px-1.5 border-l ${active ? 'border-white/40 hover:bg-white/20' : 'border-gray-300 hover:bg-red-50 hover:text-red-600'}"
+               title="從共用庫刪除">×</button>`
+          : '';
+        return `<span class="inline-flex items-stretch text-xs rounded-full border overflow-hidden transition-colors ${active
             ? 'bg-sky-600 text-white border-sky-600'
-            : 'bg-white text-gray-700 border-gray-300 hover:border-sky-400 hover:text-sky-600'}"
-          title="最後修改：${when}${it.updatedBy ? ' by ' + it.updatedBy : ''}">
-          <span class="font-mono">${it.code}</span>
-          <span class="text-opacity-75">${it.name || ''}</span>
-          ${it.updatedBy ? `<span class="opacity-60">·${it.updatedBy}</span>` : ''}
-        </button>`;
+            : 'bg-white text-gray-700 border-gray-300 hover:border-sky-400'}">
+          <button onclick="loadSharedProduct('${it.code}')" class="flex items-center gap-1 px-3 py-1.5"
+            title="最後修改：${when}${it.updatedBy ? ' by ' + it.updatedBy : ''}">
+            <span class="font-mono">${it.code}</span>
+            <span>${it.name || ''}</span>
+            ${it.updatedBy ? `<span class="opacity-60">·${it.updatedBy}</span>` : ''}
+          </button>${delBtn}
+        </span>`;
       }).join('');
+    }
+
+    async function deleteSharedProduct(code) {
+      const it = sharedList.find(x => x.code === code) || {};
+      if (!confirm(`確定從共用庫刪除「${code} ${it.name || ''}」？\n所有人都會看不到這筆資料，且無法復原。`)) return;
+      const { ok, status, data } = await shareApi(`/api/products/${encodeURIComponent(code)}`, { method: 'DELETE' });
+      if (!ok) {
+        alert(status === 403 ? '需要管理員通行碼才能刪除' : '刪除失敗：' + (data.error || status));
+        return;
+      }
+      if (pVal('p_code') === code) loadedBaseUpdatedAt = null;
+      await refreshSharedList();
+    }
+
+    // ── 選擇性上傳本機商品 ──
+    function openUploadPicker() {
+      const db = getDB();
+      const codes = Object.keys(db);
+      if (!codes.length) { alert('本機沒有商品資料'); return; }
+      document.getElementById('uploadPickList').innerHTML = codes.map(code => {
+        const inShared = sharedList.some(x => x.code === code);
+        return `<label class="flex items-center gap-2 text-xs py-1 cursor-pointer hover:bg-gray-50">
+          <input type="checkbox" class="upload-pick w-4 h-4" value="${code}" checked>
+          <span class="font-mono">${code}</span>
+          <span class="text-gray-600">${db[code].name || ''}</span>
+          ${inShared ? '<span class="text-orange-700">（共用庫已有，會被覆蓋）</span>' : ''}
+        </label>`;
+      }).join('');
+      document.getElementById('removeLocalAfterUpload').checked = false;
+      document.getElementById('uploadPicker').classList.remove('hidden');
+    }
+
+    function closeUploadPicker() {
+      document.getElementById('uploadPicker').classList.add('hidden');
+    }
+
+    function toggleAllUploadPick(on) {
+      document.querySelectorAll('.upload-pick').forEach(cb => { cb.checked = on; });
+    }
+
+    async function doUploadSelected() {
+      const picked = [...document.querySelectorAll('.upload-pick:checked')].map(cb => cb.value);
+      if (!picked.length) { alert('請至少勾選一個商品'); return; }
+      const removeLocal = document.getElementById('removeLocalAfterUpload').checked;
+      if (!confirm(`要上傳 ${picked.length} 個商品到共用庫嗎？`
+                 + (removeLocal ? '\n上傳成功的商品會從本機移除。' : ''))) return;
+
+      const db = getDB();
+      const done = [], failed = [];
+      for (const code of picked) {
+        const { ok } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ data: db[code], force: true, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+        });
+        ok ? done.push(code) : failed.push(code);
+      }
+
+      // 只移除確定上傳成功的，失敗的留在本機以免資料遺失
+      if (removeLocal && done.length) {
+        const db2 = getDB();
+        done.forEach(code => { delete db2[code]; });
+        setDB(db2);
+        renderSavedList();
+      }
+
+      closeUploadPicker();
+      await refreshSharedList();
+      alert(`上傳完成：成功 ${done.length} 個`
+        + (failed.length ? `，失敗 ${failed.length} 個（${failed.join('、')}）` : '')
+        + (removeLocal && done.length ? `\n已從本機移除 ${done.length} 個` : ''));
     }
 
     async function loadSharedProduct(code) {
@@ -2836,25 +2946,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       loadedBaseUpdatedAt = data.updatedAt || '';
       await refreshSharedList();
       return true;
-    }
-
-    // 把本機所有商品推上共用庫（首次連線時的搬家用）
-    async function uploadAllLocal() {
-      const db = getDB();
-      const codes = Object.keys(db);
-      if (!codes.length) { alert('本機沒有商品資料'); return; }
-      if (!confirm(`要把本機 ${codes.length} 個商品上傳到共用庫嗎？\n共用庫已存在的同編號商品會被覆蓋。`)) return;
-
-      let done = 0, failed = [];
-      for (const code of codes) {
-        const { ok } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
-          method: 'PUT',
-          body: JSON.stringify({ data: db[code], force: true, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
-        });
-        ok ? done++ : failed.push(code);
-      }
-      await refreshSharedList();
-      alert(`上傳完成：成功 ${done} 個` + (failed.length ? `，失敗 ${failed.length} 個（${failed.join('、')}）` : ''));
     }
 
     function renderSavedList() {
