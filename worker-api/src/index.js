@@ -594,6 +594,93 @@ app.delete('/api/quotes/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// ── 共用商品庫（產品建立）────────────────────────────────────────────────
+// 沿用報價單的通行碼，不另設密碼。
+// KV：product:<code> 存完整資料、product:list 存摘要清單。
+
+// GET /api/products — 取得商品摘要清單
+app.get('/api/products', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const raw = await c.env.CACHE.get('product:list');
+  return c.json({ role, list: raw ? JSON.parse(raw) : [] });
+});
+
+// GET /api/products/:code — 取得單一商品完整資料
+app.get('/api/products/:code', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const raw = await c.env.CACHE.get(`product:${c.req.param('code')}`);
+  if (!raw) return c.json({ error: '找不到此商品' }, 404);
+  return c.body(raw, 200, { 'content-type': 'application/json' });
+});
+
+// PUT /api/products/:code — 儲存商品
+// body: { data, baseUpdatedAt, updatedBy, force }
+// baseUpdatedAt 為此次編輯所根據的版本時間；與伺服器現況不符即視為衝突，回 409。
+app.put('/api/products/:code', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const code = c.req.param('code');
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  if (!body || typeof body.data !== 'object' || body.data === null) {
+    return c.json({ error: '缺少 data' }, 400);
+  }
+
+  const existingRaw = await c.env.CACHE.get(`product:${code}`);
+  const existing = existingRaw ? JSON.parse(existingRaw) : null;
+
+  if (existing && !body.force && (body.baseUpdatedAt || '') !== (existing.updatedAt || '')) {
+    return c.json({
+      error: 'conflict',
+      serverUpdatedAt: existing.updatedAt || '',
+      serverUpdatedBy: existing.updatedBy || '',
+      serverData: existing.data,
+    }, 409);
+  }
+
+  const now = new Date().toISOString();
+  const updatedBy = String(body.updatedBy || '').trim().slice(0, 40);
+  const record = { code, data: body.data, updatedAt: now, updatedBy };
+  await c.env.CACHE.put(`product:${code}`, JSON.stringify(record));
+
+  const listRaw = await c.env.CACHE.get('product:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  const summary = {
+    code,
+    name:   String(body.data.name || ''),
+    vendor: String(body.data.vendor || ''),
+    updatedAt: now,
+    updatedBy,
+  };
+  const at = list.findIndex(x => x.code === code);
+  if (at >= 0) list[at] = summary; else list.unshift(summary);
+  await c.env.CACHE.put('product:list', JSON.stringify(list));
+
+  return c.json({ ok: true, updatedAt: now });
+});
+
+// DELETE /api/products/:code  (需要主管通行碼)
+app.delete('/api/products/:code', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (role !== 'admin') return c.json({ error: '需要管理員權限' }, 403);
+
+  const code = c.req.param('code');
+  await c.env.CACHE.delete(`product:${code}`);
+
+  const listRaw = await c.env.CACHE.get('product:list');
+  if (listRaw) {
+    const list = JSON.parse(listRaw).filter(x => x.code !== code);
+    await c.env.CACHE.put('product:list', JSON.stringify(list));
+  }
+  return c.json({ ok: true });
+});
+
 // ── Fetch handler：外層 wrapper 確保 CORS 覆蓋所有 response ─────────────────
 export default {
   async fetch(request, env, ctx) {
