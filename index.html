@@ -2136,10 +2136,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <label class="block text-sm font-bold text-gray-700 mb-1">保固天數</label>
             <input id="p_momo_warranty_days" type="number" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="保固「有」時必填">
           </div>
-          <div class="md:col-span-2">
-            <label class="block text-sm font-bold text-gray-700 mb-1">商品特色標語<span class="text-gray-400 font-normal text-xs ml-1">（限15字）</span></label>
-            <input id="p_momo_slogan" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="選填">
-          </div>
         </div>
       </div>
 
@@ -2424,11 +2420,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             class="flex-1 text-[10px] leading-none py-1 rounded ${on ? PLATFORM_COLOR[pf] + ' text-white font-bold' : 'bg-gray-200 text-gray-500'}"
             title="${on ? '點擊移除' : '點擊加入'}${PLATFORM_LABEL[pf]}">${PLATFORM_LABEL[pf]}${on ? pos + 1 : ''}</button>`;
         }).join('');
+        const fileName = decodeURIComponent(src.split('/').pop());
         return `
-          <div class="border rounded p-1" style="width:76px">
-            <a href="${src}" target="_blank" title="${src}">
+          <div class="border rounded p-1" style="width:92px">
+            <a href="${src}" target="_blank" title="${fileName}">
               <img src="${src}" class="w-full h-16 object-cover rounded hover:ring-2 hover:ring-teal-400">
             </a>
+            <div class="text-[10px] text-gray-600 truncate mt-0.5" title="${fileName}">${fileName}</div>
             <div class="flex gap-0.5 mt-1">${btns}</div>
           </div>`;
       }).join('');
@@ -2896,7 +2894,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       p_momo_code: '10001', p_momo_brand: '', p_momo_category: '', p_momo_shop_category: '',
       p_momo_temp: '常溫', p_momo_cvs: '無', p_momo_3pl: '有', p_momo_own: '無',
       p_momo_ship_code: '',
-      p_momo_warranty: '無', p_momo_warranty_days: '', p_momo_slogan: '',
+      p_momo_warranty: '無', p_momo_warranty_days: '',
     };
 
     function collectMomoData() {
@@ -3085,7 +3083,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[28] = v.barcode || '';                 // 國際條碼
         r[29] = v.stock || '0';                  // 庫存量
         r[30] = pVal('p_momo_ship_code').trim(); // 出貨/回收地代碼
-        r[33] = pVal('p_momo_slogan').trim();    // 商品特色標語
+        r[33] = pVal('p_highlight').trim();      // 商品特色標語（取自加強文字）
         r[35] = desc;                            // 詳細介紹內文
         r[39] = imgs.slice(0, 6).join('\n');     // 主圖(B圖) 最多6張
         r[40] = adImg;                           // 廣告圖(O圖)：手選的那張
