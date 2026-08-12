@@ -2059,6 +2059,99 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <label class="block text-sm font-bold text-gray-700 mb-1">產品說明<span class="text-gray-400 font-normal text-xs ml-1">（可手動編輯）</span></label>
             <textarea id="p_description" rows="6" class="w-full border rounded px-2 py-1.5 text-sm"></textarea>
           </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-bold text-gray-700 mb-1">商品圖片路徑（R2）<span class="text-gray-400 font-normal text-xs ml-1">→ 蝦皮／momo 匯出時自動帶入圖片網址</span></label>
+            <div class="flex gap-2">
+              <input id="p_image_path" type="text" class="flex-1 border rounded px-2 py-1.5 text-sm" placeholder="https://你的網域/products/ABC00100/">
+              <button onclick="fetchR2Images()" class="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700 whitespace-nowrap">📷 從 R2 拉圖</button>
+            </div>
+            <div id="p_image_result" class="text-xs text-gray-500 mt-1"></div>
+            <div id="p_image_preview" class="flex flex-wrap gap-1 mt-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- momo 上架資料 -->
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-700 mb-1">momo 上架資料</h2>
+        <p class="text-xs text-gray-400 mb-4">僅「匯出 momo上架格式」時使用；編號類欄位請至 momo 系統〔下載模版〕右側「編輯對照表」查詢</p>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">商品編碼 <span class="text-red-400">*</span></label>
+            <input id="p_momo_code" type="number" class="w-full border rounded px-2 py-1.5 text-sm" value="10001" placeholder="10001">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">品牌編號 <span class="text-red-400">*</span></label>
+            <input id="p_momo_brand" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="對照表查詢">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">商品分類</label>
+            <input id="p_momo_category" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="100100001">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">商店分類</label>
+            <input id="p_momo_shop_category" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="選填">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">配送溫層 <span class="text-red-400">*</span></label>
+            <select id="p_momo_temp" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="常溫">常溫</option>
+              <option value="冷藏">冷藏</option>
+              <option value="冷凍">冷凍</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">超商取貨 <span class="text-red-400">*</span></label>
+            <select id="p_momo_cvs" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="無">無</option>
+              <option value="有">有</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">第三方物流 <span class="text-red-400">*</span></label>
+            <select id="p_momo_3pl" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="有">有</option>
+              <option value="無">無</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">自訂物流 <span class="text-red-400">*</span></label>
+            <select id="p_momo_own" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="無">無</option>
+              <option value="有">有</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">材積 寬(cm) <span class="text-red-400">*</span></label>
+            <input id="p_momo_w" type="number" step="0.1" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="1">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">材積 長(cm) <span class="text-red-400">*</span></label>
+            <input id="p_momo_l" type="number" step="0.1" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="1">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">材積 高(cm) <span class="text-red-400">*</span></label>
+            <input id="p_momo_h" type="number" step="0.1" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="1">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">出貨/回收地代碼</label>
+            <input id="p_momo_ship_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="000001">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">售後保固 <span class="text-red-400">*</span></label>
+            <select id="p_momo_warranty" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="無">無</option>
+              <option value="有">有</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">保固天數</label>
+            <input id="p_momo_warranty_days" type="number" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="保固「有」時必填">
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-bold text-gray-700 mb-1">商品特色標語<span class="text-gray-400 font-normal text-xs ml-1">（限15字）</span></label>
+            <input id="p_momo_slogan" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="選填">
+          </div>
         </div>
       </div>
 
@@ -2128,6 +2221,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <button onclick="exportWebsiteXLSX()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">
           ⬇ 匯出 1shop上架格式
         </button>
+        <button onclick="exportShopeeXLSX()" class="bg-orange-500 text-white px-6 py-2 rounded-lg hover:bg-orange-600 font-medium">
+          ⬇ 匯出 蝦皮上架格式
+        </button>
+        <button onclick="exportMomoXLSX()" class="bg-pink-600 text-white px-6 py-2 rounded-lg hover:bg-pink-700 font-medium">
+          ⬇ 匯出 momo上架格式
+        </button>
+        <label class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 font-medium cursor-pointer self-center text-sm" title="蝦皮若更新模板格式，可在此上傳新模板覆蓋內建表頭">
+          🔄 更新蝦皮模板
+          <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importShopeeTemplate(event)">
+        </label>
         <button onclick="clearProductForm()" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium">
           清除全部
         </button>
@@ -2273,6 +2376,54 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return above === null ? null : Math.ceil(above);
     }
 
+    // ===== R2 商品圖片 =====
+    let productImages = [];   // 已拉取的圖片完整網址（依檔名自然排序）
+
+    function renderImageResult(message, isError) {
+      const resultEl = document.getElementById('p_image_result');
+      resultEl.textContent = message;
+      resultEl.className = 'text-xs mt-1 ' + (isError ? 'text-red-500' : 'text-gray-500');
+
+      const preview = document.getElementById('p_image_preview');
+      preview.innerHTML = productImages.map((src, i) =>
+        `<a href="${src}" target="_blank" title="${i === 0 ? '主圖：' : '圖片' + i + '：'}${src}">
+           <img src="${src}" class="w-14 h-14 object-cover border rounded hover:ring-2 hover:ring-teal-400">
+         </a>`
+      ).join('');
+    }
+
+    async function fetchR2Images() {
+      const raw = pVal('p_image_path').trim();
+      if (!raw) { alert('請先填寫商品圖片路徑！'); return; }
+
+      let origin, prefix;
+      try {
+        const u = new URL(raw);
+        origin = u.origin;
+        prefix = decodeURIComponent(u.pathname).replace(/^\//, '');
+      } catch {
+        alert('圖片路徑格式錯誤，請填寫完整網址（含 https://）');
+        return;
+      }
+
+      productImages = [];
+      renderImageResult('讀取中…', false);
+      try {
+        const res = await fetch(`${WORKER_URL}/api/list-images?prefix=${encodeURIComponent(prefix)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+        productImages = (data.keys || []).map(k => `${origin}/${k.split('/').map(encodeURIComponent).join('/')}`);
+        if (productImages.length === 0) {
+          renderImageResult(`此路徑下沒有找到圖片（prefix: ${prefix}）`, true);
+        } else {
+          renderImageResult(`已拉取 ${productImages.length} 張圖片，第1張為主圖`, false);
+        }
+      } catch (e) {
+        renderImageResult(`拉取失敗：${e.message}（worker 需先部署 /api/list-images）`, true);
+      }
+    }
+
     function recalcAllVariants() {
       document.querySelectorAll('#variantRows tr').forEach(row => calcVariant(row));
     }
@@ -2403,6 +2554,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         description:  pVal('p_description'),
         tagsChecked:  Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value),
         tagsCustom:   pVal('p_tags_custom'),
+        imagePath:    pVal('p_image_path'),
+        images:       productImages,
+        momo:         collectMomoData(),
         opt1Name:     pVal('opt1_name'),
         opt2Name:     pVal('opt2_name'),
         variants:     getVariants(),
@@ -2489,6 +2643,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setVal('p_material', data.material); setVal('p_dimensions', data.dimensions); setVal('p_prod_weight', data.prodWeight);
       setVal('p_description', data.description);
       setVal('p_tags_custom', data.tagsCustom);
+      setVal('p_image_path', data.imagePath);
+      productImages = data.images || [];
+      renderImageResult(productImages.length ? `已載入 ${productImages.length} 張圖片` : '', false);
+      applyMomoData(data.momo);
       setVal('opt1_name', data.opt1Name || '樣式');
       setVal('opt2_name', data.opt2Name || '尺寸');
       if (document.getElementById('p_web_status')) document.getElementById('p_web_status').value = data.webStatus || '上架';
@@ -2654,12 +2812,223 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       autoSave();
     }
 
+
+    // ===== momo 欄位存取（id → 預設值） =====
+    const MOMO_FIELDS = {
+      p_momo_code: '10001', p_momo_brand: '', p_momo_category: '', p_momo_shop_category: '',
+      p_momo_temp: '常溫', p_momo_cvs: '無', p_momo_3pl: '有', p_momo_own: '無',
+      p_momo_w: '', p_momo_l: '', p_momo_h: '', p_momo_ship_code: '',
+      p_momo_warranty: '無', p_momo_warranty_days: '', p_momo_slogan: '',
+    };
+
+    function collectMomoData() {
+      const out = {};
+      Object.keys(MOMO_FIELDS).forEach(id => { out[id] = pVal(id); });
+      return out;
+    }
+
+    function applyMomoData(data) {
+      Object.entries(MOMO_FIELDS).forEach(([id, def]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const v = data && data[id];
+        el.value = (v === undefined || v === null || v === '') ? def : v;
+      });
+    }
+
+    // ===== 蝦皮上架格式匯出 =====
+    // 內建蝦皮「上傳模板」前6列表頭（含賣場專屬識別碼），資料自第7列開始。
+    // 若蝦皮日後更新模板，可用「上傳蝦皮模板」覆蓋，覆蓋後存於 localStorage。
+    const SHOPEE_HEADER_KEY = 'shopee_template_header_v1';
+    const SHOPEE_HEADER_DEFAULT = [["ps_category|0|0", "ps_product_name|1|0", "ps_product_description|1|0", "ps_minimum_purchase_quantity|0|0", "ps_sku_parent_short|0|0", "ps_dangerous_goods|0|0", "et_title_variation_integration_no|0|0", "et_title_variation_1|0|0", "et_title_option_for_variation_1|0|0", "et_title_image_per_variation|0|3", "et_title_variation_2|0|0", "et_title_option_for_variation_2|0|0", "ps_price|1|1", "ps_stock|0|1", "ps_sku_short|0|0", "ps_new_size_chart|0|1", "et_title_size_chart|0|3", "ps_gtin_code|0|0", "ps_item_cover_image|0|3", "ps_item_image_1|0|3", "ps_item_image_2|0|3", "ps_item_image_3|0|3", "ps_item_image_4|0|3", "ps_item_image_5|0|3", "ps_item_image_6|0|3", "ps_item_image_7|0|3", "ps_item_image_8|0|3", "ps_weight|0|1", "ps_length|0|1", "ps_width|0|1", "ps_height|0|1", "channel_id.30005|0|0", "channel_id.30015|0|0", "channel_id.30017|0|0", "channel_id.30019|0|0", "channel_id.30020|0|0", "ps_product_pre_order_dts|0|1", "et_title_reason|0|0"], ["basic", "8dadac1377dfd14fe35c60551d5947e2", "0", "315435375", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""], ["分類", "商品名稱", "商品描述", "最低購買數量", "主商品貨號", "危險物品", "商品規格識別碼", "規格名稱 1", "規格選項 1", "規格圖片", "規格名稱 2", "規格選項 2", "價格", "庫存", "商品選項貨號", "新版尺寸表", "圖片尺寸表", "GTIN", "主商品圖片", "商品圖片 1", "商品圖片 2", "商品圖片 3", "商品圖片 4", "商品圖片 5", "商品圖片 6", "商品圖片 7", "商品圖片 8", "重量", "長度", "寬度", "高度", "7-ELEVEN", "蝦皮店到店", "店到家宅配", "蝦皮店到店 - 隔日到貨", "新竹物流", "較長備貨天數", "失敗原因"], ["選填", "必填", "必填", "選填", "選填", "選填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "必填", "依條件必填", "選填", "依條件必填", "依條件必填", "選填", "選填", "選填", "選填", "選填", "選填", "選填", "選填", "選填", "選填", "選填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "依條件必填", "選填", ""], ["請為您的商品選擇正確的分類，否則蝦皮可能會因為錯誤的分類禁止您的商品", "商品名稱應包括商品的品牌和型號。請避免使用可能導致您的商品被刪除的不相關關鍵字。", "從買家的角度來看，商品描述對於了解商品資訊說明很重要，請避免使用不相關和禁止的詞。", "最低購買數量是一個以商品為單位的欄位，買家可以透過購買不同規格的商品來達到最低購買數量。若此欄位空白，則最低購買數量將預設為 1。請注意：若庫存小於最低購買數量，買家將無法成功下單", "主商品貨號將用於辨別不同的商品。建議在同個賣場內的主商品貨號不重複", "請正確的填寫，不正確的危險物品可能導致額外運費或遞送失敗。危險物品包含電池/磁鐵/液體/易燃材質等。若未填寫，將預設為沒有危險物品。", "識別商品規格的必填欄位。您可以為同個商品的規格設定同一組唯一的商品規格識別碼", "請指定第一個商品規格名稱", "指定第一個規格的值", "根據不同的規格上傳不同的規格圖片。您可以根據第一層規格選項上傳圖片", "請指定第二個商品規格名稱", "指定第二個規格的值", "請輸入您的商品價格，只接受整數", "輸入您的商品庫存，只接受整數。", "商品選項貨號將用於識別不同的商品選項。 商品選項貨號不能在同一個商品中重複", "請輸入尺寸表模板 ID，您可以在尺寸表管理頁面找到尺寸表的 ID", "您只需要選擇填寫尺寸表模板或上傳尺寸表圖片任一，如果您同時填寫兩種，系統僅會保留尺寸表模板", "GTIN（全球交易品項識別碼）為識別商品品項的全球獨一性編號，規格由國際組織 GS1 制定。常見的代碼格式為 8 到 14 位數字，常見的名稱有 UPC、EAN、JAN 和 ISBN。", "輸入您的商品主圖片網址，圖片不可與其他商品重複，請注意：商品主圖片為上架時必填的欄位，您也可以選擇先留空白，之後在批次更新屬性工具上傳圖片", "請輸入商品圖片的連結", "請輸入商品圖片的連結", "請輸入商品圖片的連結", "請輸入商品圖片的連結", "請輸入商品圖片的連結", "請輸入商品圖片的連結", "請輸入商品圖片的連結", "請輸入商品圖片的連結", "請輸入您的商品重量，不同規格可輸入不同的重量。", "請輸入您的商品包裹長度，不同規格可輸入不同的包裹尺寸。", "請輸入您的商品包裹寬度，不同規格可輸入不同的包裹尺寸。", "請輸入您的商品包裹高度，不同規格可輸入不同的包裹尺寸。", "您必需為每個商品選擇至少一個配送方式", "您必需為每個商品選擇至少一個配送方式", "您必需為每個商品選擇至少一個配送方式", "您必需為每個商品選擇至少一個配送方式", "您必需為每個商品選擇至少一個配送方式", "您可以為每個規格選項設定較長備貨天數", ""], ["從商品分類中選擇您想要的分類，或者由系統為您的商品推薦分類", "請輸入10至60個字作為商品名稱。", "請輸入3至3000個字作為商品描述。", "最低購買數量只能為 1 至 999,999 之間的整數", "請為主商品貨號輸入1-100個字", "Yes/No", "請為商品規格識別碼輸入1-100的字元", "請為規格名稱輸入 1  - 14 個字元", "請為規格選項輸入  1 - 20 個字元", "請輸入商品圖片的連結", "請為規格名稱輸入 1 - 14 個字元", "請為規格選項輸入  1 - 20 個字元", "請為商品價格輸入 1 - 499999 的數字，商品規格最貴的價格不可超過最便宜價格的 5 倍", "請輸入0至10000000作為商品庫存。", "請輸入少於100個字作為商品貨號參考。", "請輸入尺寸表模板 ID", "輸入網址\n最大 2 Mb，像素需介於 2048 x 2048px\n格式：PDF, JPG, PNG", "請依照分類限制輸入相應 GTIN 值的 8 到 14 位數字，或輸入 00 表示商品無有效的 GTIN", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "“尺寸：每張圖片最大2.0mb。接受格式：JPG，JPEG，PNG。建議尺寸：1 x 1 px”", "請輸入0.00至1000000.00 kg作為商品重量。", "請輸入0至1000000作為商品長度。", "請輸入0至1000000作為商品寬度。", "請輸入0至1000000作為商品高度。", "開啟/關閉", "開啟/關閉", "開啟/關閉", "開啟/關閉", "開啟/關閉", "如果您要為商品設定較長備貨天數，請參考各分類的備貨天數範圍", ""]];
+
+    function getShopeeHeader() {
+      try {
+        const saved = localStorage.getItem(SHOPEE_HEADER_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length >= 2) return parsed;
+        }
+      } catch (e) { /* 損毀則回退內建模板 */ }
+      return SHOPEE_HEADER_DEFAULT;
+    }
+
+    // 讀取使用者上傳的蝦皮模板，取前6列作為表頭
+    async function importShopeeTemplate(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const wb = XLSX.read(await file.arrayBuffer());
+        const sheetName = wb.SheetNames.find(n => n.includes('上傳模板')) || wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '', blankrows: true });
+        const head = rows.slice(0, 6).map(r => r.map(c => c === null || c === undefined ? '' : String(c)));
+        if (!head.length || !String(head[0][0] || '').startsWith('ps_')) {
+          alert('這份檔案看起來不是蝦皮上傳模板（第1列應為 ps_category… 等欄位代碼）');
+          return;
+        }
+        localStorage.setItem(SHOPEE_HEADER_KEY, JSON.stringify(head));
+        alert(`已更新蝦皮模板表頭（${head[0].length} 個欄位），之後匯出都會使用這份。`);
+      } catch (e) {
+        alert('讀取蝦皮模板失敗：' + e.message);
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    // 蝦皮匯出用售價：取目標毛利率區間的中位數並取整十，超出區間則退回下限
+    function shopeeExportPrice(cost, flags) {
+      const lo = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags);
+      const hi = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags);
+      if (!lo || !hi) return '';
+      const mid = Math.round((lo + hi) / 2 / 10) * 10;
+      return (mid >= lo && mid <= hi) ? mid : lo;
+    }
+
+    function exportShopeeXLSX() {
+      const code = pVal('p_code').trim();
+      const name = pVal('p_name').trim();
+      if (!code || !name) { alert('請先填寫商品編號與商品名稱！'); return; }
+
+      const variants = getVariants();
+      if (variants.length === 0) { alert('請至少新增一筆規格！'); return; }
+      const errs = validateVariants(variants);
+      if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
+
+      const flags = getCostTagFlags();
+      const desc  = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
+      const opt1  = pVal('opt1_name') || '樣式';
+      const opt2  = pVal('opt2_name') || '尺寸';
+      const imgs  = productImages;
+
+      const header = getShopeeHeader();
+      const NCOL = header[0].length;
+
+      // 每一列代表一種規格，靠「商品規格識別碼」歸群為同一商品
+      const rows = variants.map((v, i) => {
+        const cost = calcStockCost(parseFloat(v.wholesale) || 0, parseFloat(v.weight) || 0, flags);
+        const r = new Array(NCOL).fill('');
+        r[1]  = name;                            // 商品名稱
+        r[2]  = desc;                            // 商品描述
+        r[4]  = code;                            // 主商品貨號
+        r[6]  = code;                            // 商品規格識別碼
+        r[7]  = opt1;                            // 規格名稱 1
+        r[8]  = v.style;                         // 規格選項 1
+        r[10] = opt2;                            // 規格名稱 2
+        r[11] = v.size;                          // 規格選項 2
+        r[12] = shopeeExportPrice(cost, flags);  // 價格（蝦皮獨立定價）
+        r[13] = v.stock || '0';                  // 庫存
+        r[14] = v.barcode || (code.slice(0, -2) + String(i + 1).padStart(2, '0'));  // 商品選項貨號
+        r[18] = imgs[0] || '';                   // 主商品圖片
+        for (let k = 0; k < 8; k++) r[19 + k] = imgs[k + 1] || '';  // 商品圖片 1~8
+        r[27] = v.weight || '';                  // 重量
+        for (let k = 31; k <= 35; k++) r[k] = '開啟';   // 配送方式預設全開
+        return r;
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([...header, ...rows]);
+      ws['!cols'] = new Array(NCOL).fill({ wch: 18 });
+      XLSX.utils.book_append_sheet(wb, ws, '上傳模板');
+      XLSX.writeFile(wb, `${code}_蝦皮上架.xlsx`);
+      autoSave();
+
+      if (!imgs.length) {
+        alert('提醒：尚未拉取商品圖片，圖片欄位為空白。可先填寫「商品圖片路徑」再按「從 R2 拉圖」。');
+      }
+    }
+
+    // ===== momo 上架格式匯出 =====
+    const MOMO_HEADER = [
+      '商品編碼','商品品名','商品分類(圖書類商品必填)','商店分類\n依系統[下載模版]右側「編輯對照表」填寫',
+      '品牌編號','品牌系列\n編號','售價','市價','配送溫層','【配送方式】\n超商取貨','【配送方式】\n第三方物流',
+      '【配送方式】\n自訂物流','是否為約定送貨','甲配（自訂物流）運費','大型家電\n是否含安裝',
+      '【商品材積】\n寬','【商品材積】\n長','【商品材積】\n高','【商品材積】\n重量',
+      '【售後保固】\n','【售後保固】\n保固天數','【售後保固】\n保固說明','規格1名稱','規格2名稱',
+      '【單品資料】\n詳細規格1','【單品資料】\n詳細規格2','【單品資料】\n規格1圖片','【單品資料】\n商品原廠編號',
+      '【單品資料】\n國際條碼','【單品資料】\n庫存量','出貨/回收地代碼','商檢字號/NCC字號/能源效率分級',
+      '環境用藥許可證字號/廠商名稱/\n環境用藥販賣業許可證','商品特色標語','商品特色內文','詳細介紹內文',
+      '詳細介紹內文\n商品影音youtube id','是否為免稅','商品影片\n請輸入影片連結的youtube id',
+      '主圖(B圖)','廣告圖(O圖)','專推圖','能源效率分級圖',
+    ];
+
+    function exportMomoXLSX() {
+      const code = pVal('p_code').trim();
+      const name = pVal('p_name').trim();
+      if (!code || !name) { alert('請先填寫商品編號與商品名稱！'); return; }
+
+      const variants = getVariants();
+      if (variants.length === 0) { alert('請至少新增一筆規格！'); return; }
+      const errs = validateVariants(variants);
+      if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
+
+      const momoCode = pVal('p_momo_code').trim() || '10001';
+      const missing = [];
+      if (!pVal('p_momo_brand').trim()) missing.push('品牌編號');
+      if (!pVal('p_momo_w').trim() || !pVal('p_momo_l').trim() || !pVal('p_momo_h').trim()) missing.push('材積寬/長/高');
+      if (missing.length && !confirm(`momo 必填欄位尚未填寫：${missing.join('、')}\n仍要匯出嗎？（可匯出後在 Excel 補上）`)) return;
+
+      const desc  = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
+      const opt1  = pVal('opt1_name') || '樣式';
+      const opt2  = pVal('opt2_name') || '尺寸';
+      const imgs  = productImages;
+      const warranty = pVal('p_momo_warranty');
+
+      const rows = variants.map((v) => {
+        const r = new Array(MOMO_HEADER.length).fill('');
+        r[0]  = momoCode;                        // 商品編碼（同商品各規格共用）
+        r[1]  = name;                            // 商品品名
+        r[2]  = pVal('p_momo_category').trim();  // 商品分類
+        r[3]  = pVal('p_momo_shop_category').trim();
+        r[4]  = pVal('p_momo_brand').trim();     // 品牌編號
+        r[6]  = v.sell || '';                    // 售價
+        r[7]  = v.orig || '';                    // 市價（原價）
+        r[8]  = pVal('p_momo_temp');             // 配送溫層
+        r[9]  = pVal('p_momo_cvs');              // 超商取貨
+        r[10] = pVal('p_momo_3pl');              // 第三方物流
+        r[11] = pVal('p_momo_own');              // 自訂物流
+        r[15] = pVal('p_momo_w').trim();         // 材積 寬
+        r[16] = pVal('p_momo_l').trim();         // 材積 長
+        r[17] = pVal('p_momo_h').trim();         // 材積 高
+        r[18] = v.weight || '';                  // 材積 重量
+        r[19] = warranty;                        // 售後保固
+        r[20] = warranty === '有' ? pVal('p_momo_warranty_days').trim() : '';
+        r[22] = opt1;                            // 規格1名稱
+        r[23] = opt2;                            // 規格2名稱
+        r[24] = v.style || '無';                 // 詳細規格1
+        r[25] = v.size || '無';                  // 詳細規格2
+        r[27] = v.vendorCode || '';              // 商品原廠編號
+        r[28] = v.barcode || '';                 // 國際條碼
+        r[29] = v.stock || '0';                  // 庫存量
+        r[30] = pVal('p_momo_ship_code').trim(); // 出貨/回收地代碼
+        r[33] = pVal('p_momo_slogan').trim();    // 商品特色標語
+        r[35] = desc;                            // 詳細介紹內文
+        r[39] = imgs.slice(0, 6).join('\n');     // 主圖(B圖) 最多6張
+        r[40] = imgs[0] || '';                   // 廣告圖(O圖)
+        r[41] = imgs.slice(0, 20).join('\n');    // 專推圖 最多20張
+        return r;
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([MOMO_HEADER, ...rows]);
+      ws['!cols'] = new Array(MOMO_HEADER.length).fill({ wch: 16 });
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      XLSX.writeFile(wb, `${code}_momo上架.xlsx`);
+      autoSave();
+
+      if (!imgs.length) {
+        alert('提醒：尚未拉取商品圖片，主圖／廣告圖／專推圖為空白（momo 這三欄為必填）。');
+      }
+    }
+
     function clearProductForm() {
       if (!confirm('確定要清除所有填寫的資料嗎？')) return;
       ['p_code','p_name','p_vendor','p_highlight','p_tags_custom',
-       'p_material','p_dimensions','p_prod_weight','p_description'].forEach(id => {
+       'p_material','p_dimensions','p_prod_weight','p_description','p_image_path'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
+      productImages = [];
+      renderImageResult('', false);
+      applyMomoData(null);
       document.getElementById('p_preorder_note').value = '(3~10個工作天出貨)';
       document.getElementById('opt1_name').value = '樣式';
       document.getElementById('opt2_name').value = '尺寸';
