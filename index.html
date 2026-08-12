@@ -2122,18 +2122,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             </select>
           </div>
           <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">材積 寬(cm) <span class="text-red-400">*</span></label>
-            <input id="p_momo_w" type="number" step="0.1" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="1">
-          </div>
-          <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">材積 長(cm) <span class="text-red-400">*</span></label>
-            <input id="p_momo_l" type="number" step="0.1" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="1">
-          </div>
-          <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">材積 高(cm) <span class="text-red-400">*</span></label>
-            <input id="p_momo_h" type="number" step="0.1" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="1">
-          </div>
-          <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">出貨/回收地代碼</label>
             <input id="p_momo_ship_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="000001">
           </div>
@@ -2168,7 +2156,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
         </div>
         <p class="text-xs text-gray-400 mb-3">
-          <span class="text-blue-400">🔗 同步：批價、料號、重量、安全庫存、有效天數、交貨天數、銷售模式</span>
+          <span class="text-blue-400">🔗 同步：批價、料號、重量、長寬高、安全庫存、有效天數、交貨天數、銷售模式</span>
         </p>
         <div class="overflow-x-auto">
           <table class="w-full text-sm border-collapse">
@@ -2187,13 +2175,17 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">廠商批價 <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap">廠商料號 <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">重量(kg) <span class="text-red-400">*</span></th>
+                <th class="border px-2 py-2 text-right whitespace-nowrap">長(cm)<br><span class="font-normal text-gray-400">USALE/momo</span></th>
+                <th class="border px-2 py-2 text-right whitespace-nowrap">寬(cm)<br><span class="font-normal text-gray-400">USALE/momo</span></th>
+                <th class="border px-2 py-2 text-right whitespace-nowrap">高(cm)<br><span class="font-normal text-gray-400">USALE/momo</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-gray-200" style="display:none">存貨成本<br><span class="font-normal text-gray-400">自動</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-gray-200" style="display:none">雜項成本<br><span class="font-normal text-gray-400">自動</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-yellow-100">售價<br><span class="font-normal text-gray-400">手填</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-green-100">特價<br><span class="font-normal text-gray-400">=售價</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap bg-blue-100">原價<br><span class="font-normal text-gray-400">÷0.8整十</span></th>
                 <th class="border px-2 py-2 text-right bg-purple-100">毛利率<br><span class="font-normal text-gray-400 whitespace-normal">至少黃燈、建議39%以上較安全</span></th>
-                <th class="border px-2 py-2 text-right bg-orange-100">蝦皮建議售價<br><span class="font-normal text-gray-400 whitespace-normal">毛利率29%~34%</span></th>
+                <th class="border px-2 py-2 text-right bg-orange-100">蝦皮售價<br><span class="font-normal text-gray-400">手填</span></th>
+                <th class="border px-2 py-2 text-right bg-orange-50">蝦皮毛利率<br><span class="font-normal text-gray-400 whitespace-normal">目標29%~34%</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">現貨庫存</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">預購數量</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">安全庫存</th>
@@ -2270,41 +2262,32 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       row.querySelector('.v-spec').value = sell || '';
       row.querySelector('.v-orig').value = sell ? Math.round((sell / 0.8) / 10) * 10 : '';
 
-      const marginEl = row.querySelector('.v-margin');
-      if (sell && cost) {
-        const margin = calcMargin(sell, cost, flags);
-        let icon, label;
-        if (margin >= 0.44)      { icon = '🟢'; label = '很好'; }
-        else if (margin >= 0.38) { icon = '🟡'; label = '正常'; }
-        else                      { icon = '🔴'; label = '危險'; }
-        marginEl.value = icon + ' ' + (margin * 100).toFixed(1) + '%';
-        marginEl.title = label;
-      } else {
-        marginEl.value = '';
-        marginEl.title = '';
-      }
+      // 官網／momo 毛利率
+      renderMarginCell(row.querySelector('.v-margin'), sell, cost, flags, 0.44, 0.38);
 
-      // 蝦皮建議售價：反推達到目標毛利率區間所需的售價
-      const shopeeEl = row.querySelector('.v-shopee-price');
-      if (shopeeEl) {
-        if (cost) {
-          const low  = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags, SHOPEE_OPTS);
-          const high = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags, SHOPEE_OPTS);
-          shopeeEl.value = (low && high) ? `${low} ~ ${high}` : '';
-          shopeeEl.title = `毛利率 ${(SHOPEE_MARGIN_MIN*100).toFixed(0)}%~${(SHOPEE_MARGIN_MAX*100).toFixed(0)}%（廣告成本率 ${(AD_RATE_SHOPEE*100).toFixed(0)}%）對應售價`;
-        } else {
-          shopeeEl.value = '';
-          shopeeEl.title = '';
-        }
-      }
+      // 蝦皮毛利率（依手填的蝦皮售價計算，成本公式與官網相同）
+      const shopeeSell = parseFloat(row.querySelector('.v-shopee-sell').value) || 0;
+      renderMarginCell(row.querySelector('.v-shopee-margin'), shopeeSell, cost, flags,
+                       SHOPEE_MARGIN_GOOD, SHOPEE_MARGIN_NORMAL);
+    }
+
+    // 將毛利率算出並以燈號＋百分比呈現
+    function renderMarginCell(el, sell, cost, flags, goodThreshold, normalThreshold) {
+      if (!el) return;
+      if (!sell || !cost) { el.value = ''; el.title = ''; return; }
+      const margin = calcMargin(sell, cost, flags);
+      let icon, label;
+      if (margin >= goodThreshold)        { icon = '🟢'; label = '很好'; }
+      else if (margin >= normalThreshold) { icon = '🟡'; label = '正常'; }
+      else                                { icon = '🔴'; label = '危險'; }
+      el.value = icon + ' ' + (margin * 100).toFixed(1) + '%';
+      el.title = label;
     }
 
     // ===== 成本計算共用函式（單一事實來源） =====
-    const SHOPEE_MARGIN_MIN = 0.29;
-    const SHOPEE_MARGIN_MAX = 0.34;
-    const AD_RATE_DEFAULT = 0.25;   // 官網／momo 廣告成本率
-    const AD_RATE_SHOPEE  = 0.15;   // 蝦皮廣告成本率
-    const SHOPEE_OPTS = { adRate: AD_RATE_SHOPEE };
+    // 蝦皮毛利率燈號門檻（目標區間 29%~34%）
+    const SHOPEE_MARGIN_GOOD   = 0.34;
+    const SHOPEE_MARGIN_NORMAL = 0.29;
 
     function getCostTagFlags() {
       const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
@@ -2339,11 +2322,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // 雜項成本 = 基礎雜項成本（出貨運費包材＋活動系統稅金服務費）＋退貨損失成本
-    // opts.adRate 可指定廣告成本率（蝦皮 15%，官網／momo 25%）
-    function calcMiscCost(sell, flags, opts) {
+    function calcMiscCost(sell, flags) {
       if (!sell) return 0;
-      const adRate       = (opts && opts.adRate !== undefined) ? opts.adRate : AD_RATE_DEFAULT;
-      const adCost       = sell * adRate;
+      const adCost       = sell * 0.25;
       const shipPackCost = flags.consolidatedShip ? 0 : 100;
       const activityFee  = sell * 0.125;
       const miscBase     = shipPackCost + activityFee;
@@ -2352,49 +2333,79 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // 毛利率 =（售價＋客人負擔費用－存貨成本－雜項成本）/（售價＋客人負擔費用）
-    function calcMargin(sell, cost, flags, opts) {
+    function calcMargin(sell, cost, flags) {
       const customerFee = sell < 1000 ? 80 : 0;
-      return (sell + customerFee - cost - calcMiscCost(sell, flags, opts)) / (sell + customerFee);
-    }
-
-    // 反推：達到目標毛利率所需的最低售價
-    // 售價1000元處有斷點（低於1000才向客人收80元運費），毛利率在此不連續，
-    // 因此分兩段各自二分搜尋（單段內為單調遞增），再取較低的可行售價。
-    function suggestPriceForMargin(targetMargin, cost, flags, opts) {
-      const solveIn = (lo, hi) => {
-        if (calcMargin(hi, cost, flags, opts) < targetMargin) return null;
-        if (calcMargin(lo, cost, flags, opts) >= targetMargin) return lo;
-        for (let i = 0; i < 60; i++) {
-          const mid = (lo + hi) / 2;
-          if (calcMargin(mid, cost, flags, opts) < targetMargin) lo = mid; else hi = mid;
-        }
-        return hi;
-      };
-
-      const below = solveIn(1, 999.999);
-      if (below !== null) {
-        const p = Math.ceil(below);
-        // 無條件進位可能跨過1000的斷點導致毛利率反而不足，需驗證
-        if (calcMargin(p, cost, flags, opts) >= targetMargin - 1e-9) return p;
-      }
-      const above = solveIn(1000, 499999);
-      return above === null ? null : Math.ceil(above);
+      return (sell + customerFee - cost - calcMiscCost(sell, flags)) / (sell + customerFee);
     }
 
     // ===== R2 商品圖片 =====
     let productImages = [];   // 已拉取的圖片完整網址（依檔名自然排序）
+    // 各平台選用的圖片：存 productImages 的索引，陣列順序即圖片順序（第1個為主圖）
+    let imageSelection = { shopee: [], momo: [], usale: [] };
+    let imageMessage = { text: '', isError: false };
+
+    const PLATFORM_LABEL = { shopee: '蝦', momo: 'mo', usale: 'US' };
+    const PLATFORM_COLOR = { shopee: 'bg-orange-500', momo: 'bg-pink-600', usale: 'bg-green-600' };
+
+    // 取得某平台選用的圖片網址（未選任何張時回傳空陣列）
+    function getPlatformImages(platform) {
+      return (imageSelection[platform] || []).map(i => productImages[i]).filter(Boolean);
+    }
+
+    // 切換單張圖片在某平台的選取狀態；重新選取時會排到最後
+    function toggleImageSelect(platform, idx) {
+      const arr = imageSelection[platform];
+      const at = arr.indexOf(idx);
+      if (at >= 0) arr.splice(at, 1); else arr.push(idx);
+      renderImageResult();
+    }
+
+    function selectAllImages(platform, on) {
+      imageSelection[platform] = on ? productImages.map((_, i) => i) : [];
+      renderImageResult();
+    }
 
     function renderImageResult(message, isError) {
+      if (message !== undefined) imageMessage = { text: message, isError: !!isError };
+
       const resultEl = document.getElementById('p_image_result');
-      resultEl.textContent = message;
-      resultEl.className = 'text-xs mt-1 ' + (isError ? 'text-red-500' : 'text-gray-500');
+      resultEl.textContent = imageMessage.text;
+      resultEl.className = 'text-xs mt-1 ' + (imageMessage.isError ? 'text-red-500' : 'text-gray-500');
 
       const preview = document.getElementById('p_image_preview');
-      preview.innerHTML = productImages.map((src, i) =>
-        `<a href="${src}" target="_blank" title="${i === 0 ? '主圖：' : '圖片' + i + '：'}${src}">
-           <img src="${src}" class="w-14 h-14 object-cover border rounded hover:ring-2 hover:ring-teal-400">
-         </a>`
-      ).join('');
+      if (!productImages.length) { preview.innerHTML = ''; return; }
+
+      const platforms = ['shopee', 'momo', 'usale'];
+      const toolbar = `
+        <div class="w-full flex flex-wrap items-center gap-3 mb-1 text-xs">
+          ${platforms.map(pf => `
+            <span class="inline-flex items-center gap-1">
+              <span class="${PLATFORM_COLOR[pf]} text-white rounded px-1.5 py-0.5">${PLATFORM_LABEL[pf]}</span>
+              <span class="text-gray-500">${getPlatformImages(pf).length}張</span>
+              <button onclick="selectAllImages('${pf}', true)" class="text-blue-500 hover:underline">全選</button>
+              <button onclick="selectAllImages('${pf}', false)" class="text-gray-400 hover:underline">清除</button>
+            </span>`).join('')}
+          <span class="text-gray-400">｜點數字鈕加入／移除，數字1為主圖</span>
+        </div>`;
+
+      const cards = productImages.map((src, i) => {
+        const btns = platforms.map(pf => {
+          const pos = imageSelection[pf].indexOf(i);
+          const on = pos >= 0;
+          return `<button onclick="toggleImageSelect('${pf}', ${i})"
+            class="flex-1 text-[10px] leading-none py-1 rounded ${on ? PLATFORM_COLOR[pf] + ' text-white font-bold' : 'bg-gray-200 text-gray-500'}"
+            title="${on ? '點擊移除' : '點擊加入'}${PLATFORM_LABEL[pf]}">${PLATFORM_LABEL[pf]}${on ? pos + 1 : ''}</button>`;
+        }).join('');
+        return `
+          <div class="border rounded p-1" style="width:76px">
+            <a href="${src}" target="_blank" title="${src}">
+              <img src="${src}" class="w-full h-16 object-cover rounded hover:ring-2 hover:ring-teal-400">
+            </a>
+            <div class="flex gap-0.5 mt-1">${btns}</div>
+          </div>`;
+      }).join('');
+
+      preview.innerHTML = toolbar + cards;
     }
 
     async function fetchR2Images() {
@@ -2412,6 +2423,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
 
       productImages = [];
+      imageSelection = { shopee: [], momo: [], usale: [] };
       renderImageResult('讀取中…', false);
       try {
         const res = await fetch(`${WORKER_URL}/api/list-images?prefix=${encodeURIComponent(prefix)}`);
@@ -2422,7 +2434,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         if (productImages.length === 0) {
           renderImageResult(`此路徑下沒有找到圖片（prefix: ${prefix}）`, true);
         } else {
-          renderImageResult(`已拉取 ${productImages.length} 張圖片，第1張為主圖`, false);
+          // 預設三平台全選，再由使用者取消不要的
+          const all = productImages.map((_, i) => i);
+          imageSelection = { shopee: [...all], momo: [...all], usale: [...all] };
+          renderImageResult(`已拉取 ${productImages.length} 張圖片，預設全選，可各平台自行調整`, false);
         }
       } catch (e) {
         renderImageResult(`拉取失敗：${e.message}（worker 需先部署 /api/list-images）`, true);
@@ -2496,6 +2511,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           oninput="syncFromRow(this.closest('tr'),'v-vendor-code')"></td>
         <td class="border px-1 py-1"><input class="v-weight w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.01" value="${d.weight||''}" placeholder="0"
           oninput="calcVariant(this.closest('tr'));syncFromRow(this.closest('tr'),'v-weight')"></td>
+        <td class="border px-1 py-1"><input class="v-len w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.1" value="${d.len||''}" placeholder="0"
+          oninput="syncFromRow(this.closest('tr'),'v-len')"></td>
+        <td class="border px-1 py-1"><input class="v-wid w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.1" value="${d.wid||''}" placeholder="0"
+          oninput="syncFromRow(this.closest('tr'),'v-wid')"></td>
+        <td class="border px-1 py-1"><input class="v-hei w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.1" value="${d.hei||''}" placeholder="0"
+          oninput="syncFromRow(this.closest('tr'),'v-hei')"></td>
         <td class="border px-1 py-1 bg-gray-50" style="display:none"><input class="v-cost w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-gray-50" style="display:none"><input class="v-misc w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-yellow-50"><input class="v-sell w-20 border-0 bg-transparent px-1 text-sm text-right font-bold" type="number" value="${d.sell||''}" placeholder="0"
@@ -2503,7 +2524,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <td class="border px-1 py-1 bg-green-50"><input class="v-spec w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-blue-50"><input class="v-orig w-20 border-0 bg-transparent px-1 text-sm text-right text-gray-500" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-purple-50 text-center"><input class="v-margin w-16 border-0 bg-transparent px-1 text-sm text-center" type="text" readonly tabindex="-1"></td>
-        <td class="border px-1 py-1 bg-orange-50 text-center"><input class="v-shopee-price w-24 border-0 bg-transparent px-1 text-sm text-center text-gray-600" type="text" readonly tabindex="-1"></td>
+        <td class="border px-1 py-1 bg-orange-50"><input class="v-shopee-sell w-20 border-0 bg-transparent px-1 text-sm text-right font-bold" type="number" value="${d.shopeeSell||''}" placeholder="0"
+          oninput="calcVariant(this.closest('tr'))"></td>
+        <td class="border px-1 py-1 bg-orange-50 text-center"><input class="v-shopee-margin w-20 border-0 bg-transparent px-1 text-sm text-center" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1"><input class="v-stock w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.stock||0}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-preorder w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.preorder??500}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-safety w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.safety??'0'}" placeholder="0"
@@ -2561,6 +2584,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         tagsCustom:   pVal('p_tags_custom'),
         imagePath:    pVal('p_image_path'),
         images:       productImages,
+        imageSelection: imageSelection,
         momo:         collectMomoData(),
         opt1Name:     pVal('opt1_name'),
         opt2Name:     pVal('opt2_name'),
@@ -2650,6 +2674,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setVal('p_tags_custom', data.tagsCustom);
       setVal('p_image_path', data.imagePath);
       productImages = data.images || [];
+      // 舊資料沒有 imageSelection，預設全選以維持原本行為
+      const allIdx = productImages.map((_, i) => i);
+      const savedSel = data.imageSelection || {};
+      imageSelection = {
+        shopee: savedSel.shopee || [...allIdx],
+        momo:   savedSel.momo   || [...allIdx],
+        usale:  savedSel.usale  || [...allIdx],
+      };
       renderImageResult(productImages.length ? `已載入 ${productImages.length} 張圖片` : '', false);
       applyMomoData(data.momo);
       setVal('opt1_name', data.opt1Name || '樣式');
@@ -2720,9 +2752,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         wholesale:    tr.querySelector('.v-wholesale').value,
         vendorCode:   tr.querySelector('.v-vendor-code').value.trim(),
         weight:       tr.querySelector('.v-weight').value,
+        len:          tr.querySelector('.v-len').value,
+        wid:          tr.querySelector('.v-wid').value,
+        hei:          tr.querySelector('.v-hei').value,
         cost:         tr.querySelector('.v-cost').value,
         misc:         tr.querySelector('.v-misc').value,
         sell:         tr.querySelector('.v-sell').value,
+        shopeeSell:   tr.querySelector('.v-shopee-sell').value,
         spec:         tr.querySelector('.v-spec').value,
         orig:         tr.querySelector('.v-orig').value,
         stock:        tr.querySelector('.v-stock').value,
@@ -2762,7 +2798,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
 
       const note = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
-      const header = ['商品編號','商品名稱','樣式','尺寸','庫存量','售價','雜項成本','存貨成本','重量','廠商',' 廠商料號','廠商批價','倉庫儲位','品項條碼','銷售模式(可追/售完/下架)','安全庫存','售價模式(系統/通路)','商品備註','規格備註','長','寬','高','交貨天數','有效天數','商品標籤'];
+      const header = ['商品編號','商品名稱','樣式','尺寸','庫存量','售價','雜項成本','存貨成本','重量','廠商',' 廠商料號','廠商批價','倉庫儲位','品項條碼','銷售模式(可追/售完/下架)','安全庫存','售價模式(系統/通路)','商品備註','規格備註','長','寬','高','交貨天數','有效天數','商品標籤','稅別','商品圖外部連結','商品連結'];
+      const imgLinks = getPlatformImages('usale').join(',');
       const rows = variants.map((v, i) => [
         code, name, v.style, v.size,
         v.stock||'0', v.sell||'', '', '', v.weight||'',
@@ -2770,14 +2807,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         '',
         v.barcode||(code.slice(0,-2)+String(i+1).padStart(2,'0')),
         v.salesMode||'可追', v.safety||'', '',
-        note, '', '', '', '',
+        note, '',
+        v.len||'', v.wid||'', v.hei||'',
         v.deliveryDays||'', v.validDays||'',
         getTagsValue(),
+        '', imgLinks, '',
       ]);
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-      ws['!cols'] = [10,20,10,6,8,8,8,10,8,10,12,10,12,16,20,8,14,24,16,6,6,6,8,8,16].map(w=>({wch:w}));
+      ws['!cols'] = [10,20,10,6,8,8,8,10,8,10,12,10,12,16,20,8,14,24,16,6,6,6,8,8,16,8,40,20].map(w=>({wch:w}));
       XLSX.utils.book_append_sheet(wb, ws, '20100918_商品資料(從網頁匯入)');
       XLSX.writeFile(wb, `${code}_USALE建立.xlsx`);
       autoSave();
@@ -2822,7 +2861,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     const MOMO_FIELDS = {
       p_momo_code: '10001', p_momo_brand: '', p_momo_category: '', p_momo_shop_category: '',
       p_momo_temp: '常溫', p_momo_cvs: '無', p_momo_3pl: '有', p_momo_own: '無',
-      p_momo_w: '', p_momo_l: '', p_momo_h: '', p_momo_ship_code: '',
+      p_momo_ship_code: '',
       p_momo_warranty: '無', p_momo_warranty_days: '', p_momo_slogan: '',
     };
 
@@ -2880,14 +2919,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
     }
 
-    // 蝦皮匯出用售價：取目標毛利率區間的中位數並取整十，超出區間則退回下限
-    function shopeeExportPrice(cost, flags) {
-      const lo = suggestPriceForMargin(SHOPEE_MARGIN_MIN, cost, flags, SHOPEE_OPTS);
-      const hi = suggestPriceForMargin(SHOPEE_MARGIN_MAX, cost, flags, SHOPEE_OPTS);
-      if (!lo || !hi) return '';
-      const mid = Math.round((lo + hi) / 2 / 10) * 10;
-      return (mid >= lo && mid <= hi) ? mid : lo;
-    }
 
     function exportShopeeXLSX() {
       const code = pVal('p_code').trim();
@@ -2899,18 +2930,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const errs = validateVariants(variants);
       if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
 
-      const flags = getCostTagFlags();
       const desc  = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
       const opt1  = pVal('opt1_name') || '樣式';
       const opt2  = pVal('opt2_name') || '尺寸';
-      const imgs  = productImages;
 
+      const imgs  = getPlatformImages('shopee');
       const header = getShopeeHeader();
       const NCOL = header[0].length;
 
       // 每一列代表一種規格，靠「商品規格識別碼」歸群為同一商品
       const rows = variants.map((v, i) => {
-        const cost = calcStockCost(parseFloat(v.wholesale) || 0, parseFloat(v.weight) || 0, flags);
         const r = new Array(NCOL).fill('');
         r[1]  = name;                            // 商品名稱
         r[2]  = desc;                            // 商品描述
@@ -2920,7 +2949,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[8]  = v.style;                         // 規格選項 1
         r[10] = opt2;                            // 規格名稱 2
         r[11] = v.size;                          // 規格選項 2
-        r[12] = shopeeExportPrice(cost, flags);  // 價格（蝦皮獨立定價）
+        r[12] = v.shopeeSell || '';              // 價格（規格表手填的蝦皮售價）
         r[13] = v.stock || '0';                  // 庫存
         r[14] = v.barcode || (code.slice(0, -2) + String(i + 1).padStart(2, '0'));  // 商品選項貨號
         r[18] = imgs[0] || '';                   // 主商品圖片
@@ -2939,7 +2968,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const notes = [];
       if (!imgs.length) {
-        notes.push('・尚未拉取商品圖片，圖片欄位為空白。可先填寫「商品圖片路徑」再按「從 R2 拉圖」。');
+        notes.push('・蝦皮未選任何圖片，圖片欄位為空白。可在「商品圖片路徑」拉圖後點「蝦」加入。');
+      } else if (imgs.length > 9) {
+        // 蝦皮只有主圖1張＋商品圖8張，超出的不放進檔案，需明確告知而非無聲丟棄
+        notes.push(`・蝦皮最多只能放 9 張圖，你選了 ${imgs.length} 張，第 10 張之後未放入：\n    ${imgs.slice(9).map(u => decodeURIComponent(u.split('/').pop())).join('、')}`);
       }
       // 第2列的模板識別碼與賣場ID為賣場專屬，內建表頭已清空，需由各賣場自行上傳模板帶入
       if (!String(header[1] && header[1][1] || '').trim()) {
@@ -2975,13 +3007,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const momoCode = pVal('p_momo_code').trim() || '10001';
       const missing = [];
       if (!pVal('p_momo_brand').trim()) missing.push('品牌編號');
-      if (!pVal('p_momo_w').trim() || !pVal('p_momo_l').trim() || !pVal('p_momo_h').trim()) missing.push('材積寬/長/高');
+      if (variants.some(v => !v.len || !v.wid || !v.hei)) missing.push('規格表的長／寬／高');
       if (missing.length && !confirm(`momo 必填欄位尚未填寫：${missing.join('、')}\n仍要匯出嗎？（可匯出後在 Excel 補上）`)) return;
 
       const desc  = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
       const opt1  = pVal('opt1_name') || '樣式';
       const opt2  = pVal('opt2_name') || '尺寸';
-      const imgs  = productImages;
+      const imgs  = getPlatformImages('momo');
       const warranty = pVal('p_momo_warranty');
 
       const rows = variants.map((v) => {
@@ -2997,9 +3029,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[9]  = pVal('p_momo_cvs');              // 超商取貨
         r[10] = pVal('p_momo_3pl');              // 第三方物流
         r[11] = pVal('p_momo_own');              // 自訂物流
-        r[15] = pVal('p_momo_w').trim();         // 材積 寬
-        r[16] = pVal('p_momo_l').trim();         // 材積 長
-        r[17] = pVal('p_momo_h').trim();         // 材積 高
+        r[15] = v.wid || '';                     // 材積 寬（取自規格表）
+        r[16] = v.len || '';                     // 材積 長（取自規格表）
+        r[17] = v.hei || '';                     // 材積 高（取自規格表）
         r[18] = v.weight || '';                  // 材積 重量
         r[19] = warranty;                        // 售後保固
         r[20] = warranty === '有' ? pVal('p_momo_warranty_days').trim() : '';
@@ -3026,9 +3058,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       XLSX.writeFile(wb, `${code}_momo上架.xlsx`);
       autoSave();
 
+      const momoNotes = [];
       if (!imgs.length) {
-        alert('提醒：尚未拉取商品圖片，主圖／廣告圖／專推圖為空白（momo 這三欄為必填）。');
+        momoNotes.push('・momo 未選任何圖片，主圖／廣告圖／專推圖為空白（這三欄為必填）。');
+      } else if (imgs.length > 20) {
+        momoNotes.push(`・momo 專推圖最多 20 張，你選了 ${imgs.length} 張，第 21 張之後未放入。`);
       }
+      if (momoNotes.length) alert('匯出完成，請留意：\n\n' + momoNotes.join('\n'));
     }
 
     function clearProductForm() {
@@ -3038,6 +3074,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const el = document.getElementById(id); if (el) el.value = '';
       });
       productImages = [];
+      imageSelection = { shopee: [], momo: [], usale: [] };
       renderImageResult('', false);
       applyMomoData(null);
       document.getElementById('p_preorder_note').value = '(3~10個工作天出貨)';
