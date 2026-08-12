@@ -322,6 +322,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input type="file" id="poFile" accept=".xlsx,.xls" class="block">
           </div>
           <button onclick="processPoFile()" class="bg-indigo-600 text-white py-2 px-5 rounded-lg hover:bg-indigo-700 font-medium">解析採購單</button>
+          <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">倉庫客戶編號<span class="text-gray-400 font-normal text-xs ml-1">→ 顯示於嘜頭</span></label>
+            <select id="markWarehouse" class="border rounded-lg px-3 py-2 text-sm">
+              <option value="21483｜張維成五權">21483（張維成五權）</option>
+              <option value="14846｜米吉五工">14846（米吉五工）</option>
+            </select>
+          </div>
         </div>
         <div id="poResults" class="space-y-6"></div>
       </div>
@@ -1791,6 +1798,21 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       ctx.fillStyle = '#111';
       ctx.fillText('叫貨單內容物', W / 2, y + 20);
       y += 36;
+
+      // 倉庫客戶編號（右上角，方便倉庫人員一眼辨識）
+      const whSel = document.getElementById('markWarehouse');
+      const [whCode, whName] = (whSel ? whSel.value : '').split('｜');
+      if (whCode) {
+        ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#111';
+        ctx.fillText('倉庫客戶編號：' + whCode, W - PR, PT + 20);
+        if (whName) {
+          ctx.font = '12px sans-serif';
+          ctx.fillStyle = '#666';
+          ctx.fillText(whName, W - PR, PT + 38);
+        }
+      }
 
       // 叫貨單號 + 廠商（並列）
       ctx.font = 'bold 14px sans-serif';
