@@ -2819,12 +2819,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       box.innerHTML = shown.map(it => {
         const active = it.code === currentCode;
         const when = (it.updatedAt || '').slice(0, 16).replace('T', ' ');
-        // 刪除需管理員權限，非管理員不顯示按鈕
-        const delBtn = shareRole === 'admin'
-          ? `<button onclick="deleteSharedProduct('${it.code}')"
+        const delBtn = `<button onclick="deleteSharedProduct('${it.code}')"
                class="px-1.5 border-l ${active ? 'border-white/40 hover:bg-white/20' : 'border-gray-300 hover:bg-red-50 hover:text-red-600'}"
-               title="從共用庫刪除">×</button>`
-          : '';
+               title="從共用庫刪除">×</button>`;
         return `<span class="inline-flex items-stretch text-xs rounded-full border overflow-hidden transition-colors ${active
             ? 'bg-sky-600 text-white border-sky-600'
             : 'bg-white text-gray-700 border-gray-300 hover:border-sky-400'}">
@@ -2840,10 +2837,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     async function deleteSharedProduct(code) {
       const it = sharedList.find(x => x.code === code) || {};
-      if (!confirm(`確定從共用庫刪除「${code} ${it.name || ''}」？\n所有人都會看不到這筆資料，且無法復原。`)) return;
+      if (!confirm(`確定從共用庫刪除「${code} ${it.name || ''}」？\n\n⚠ 這會影響所有人：刪除後全公司都看不到這筆資料，且無法復原。`)) return;
       const { ok, status, data } = await shareApi(`/api/products/${encodeURIComponent(code)}`, { method: 'DELETE' });
       if (!ok) {
-        alert(status === 403 ? '需要管理員通行碼才能刪除' : '刪除失敗：' + (data.error || status));
+        alert('刪除失敗：' + (data.error || status));
         return;
       }
       if (pVal('p_code') === code) loadedBaseUpdatedAt = null;

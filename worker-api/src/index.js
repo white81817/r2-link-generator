@@ -37,7 +37,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-12-products',
+  version: '2026-08-12-products-delete-any',
   features: ['erp', 'cache', 'quotes', 'products'],
   timestamp: new Date().toISOString(),
 }));
@@ -673,10 +673,10 @@ app.put('/api/products/:code', async (c) => {
   return c.json({ ok: true, updatedAt: now });
 });
 
-// DELETE /api/products/:code  (需要主管通行碼)
+// DELETE /api/products/:code  (一般通行碼即可刪除)
 app.delete('/api/products/:code', async (c) => {
   const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
-  if (role !== 'admin') return c.json({ error: '需要管理員權限' }, 403);
+  if (!role) return c.json({ error: '未授權' }, 401);
 
   const code = c.req.param('code');
   await c.env.CACHE.delete(`product:${code}`);
