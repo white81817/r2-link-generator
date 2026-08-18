@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         1688 SKU 抓取器 → didibox
 // @namespace    https://didibox.cc/
-// @version      1.0.0
+// @version      1.1.0
 // @description  在 1688 頁面批次抓取商品 SKU（skuId／規格文字／價格／庫存）並上傳到 didibox-api，供產品建立的採購下單功能比對使用
 // @match        https://*.1688.com/*
 // @grant        none
@@ -12,6 +12,61 @@
   'use strict';
 
   const API = 'https://didibox-api.adam-061.workers.dev';
+
+  // 由商品資料的廠商料號解析出的全部 1688 offer，供「抓取全部」一鍵處理
+  const TARGET_OFFERS = [
+    '1004092290315',
+    '1005503266568',
+    '1019344974493',
+    '1024837027371',
+    '1026849397397',
+    '1034705134103',
+    '1044476900282',
+    '1044976888730',
+    '1055517644671',
+    '1062215344087',
+    '527498129100',
+    '571976706851',
+    '587253792142',
+    '634162136992',
+    '672041840952',
+    '676646368903',
+    '679250263576',
+    '692243157850',
+    '692567108047',
+    '731188094415',
+    '762418064424',
+    '768798996295',
+    '776781295952',
+    '778281484398',
+    '799936854408',
+    '800072146445',
+    '820721957066',
+    '829686976232',
+    '841516156399',
+    '873752531966',
+    '884908161516',
+    '891439657364',
+    '896500523851',
+    '896616865501',
+    '913166288456',
+    '920965125734',
+    '930934104963',
+    '933370072634',
+    '945521037045',
+    '949797922200',
+    '950242580897',
+    '953713233440',
+    '959130002227',
+    '961182143989',
+    '975514885637',
+    '986277159142',
+    '986729295390',
+    '988916632923',
+    '991047601637',
+    '995589572095',
+    '995988445516',
+  ];
   const TOKEN_KEY = 'didibox_token';
   const USER_KEY  = 'didibox_user';
 
@@ -105,8 +160,9 @@
       </div>
       <div style="display:flex;gap:6px;margin-bottom:8px">
         <button id="dbx-here" style="flex:1;padding:6px;border:1px solid #ccc;background:#f5f5f5;border-radius:4px;cursor:pointer">抓目前頁面</button>
-        <button id="dbx-run" style="flex:1;padding:6px;border:0;background:#0284c7;color:#fff;border-radius:4px;cursor:pointer;font-weight:bold">批次抓取</button>
+        <button id="dbx-run" style="flex:1;padding:6px;border:0;background:#0284c7;color:#fff;border-radius:4px;cursor:pointer;font-weight:bold">抓取清單</button>
       </div>
+      <button id="dbx-all" style="width:100%;padding:7px;border:0;background:#16a34a;color:#fff;border-radius:4px;cursor:pointer;font-weight:bold;margin-bottom:8px">&#9889; 抓取全部待處理</button>
       <div id="dbx-log" style="max-height:180px;overflow:auto;background:#f8f8f8;border-radius:4px;padding:6px;font-size:12px;color:#444"></div>
     </div>`;
   document.body.appendChild(panel);
@@ -182,5 +238,29 @@
     }
   };
 
-  log('就緒。先填通行碼，再貼 offer id 或網址。');
+  // 一鍵處理：先問伺服器已收錄哪些，只補差集，中斷後再按可接續
+  $('dbx-all').onclick = async () => {
+    const token = $('dbx-token').value.trim();
+    if (!token) { log('請先輸入 didibox 通行碼', '#c00'); return; }
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, $('dbx-user').value.trim());
+
+    log('查詢已抓取的資料…', '#0284c7');
+    let done = new Set();
+    try {
+      const r = await api('/api/1688/skus');
+      done = new Set(Object.keys(r.offers || {}));
+      log('資料庫已有 ' + done.size + ' 個 offer');
+    } catch (e) {
+      log('查詢失敗（將全部重抓）：' + e.message, '#c60');
+    }
+
+    const todo = TARGET_OFFERS.filter(id => !done.has(id));
+    if (!todo.length) { log('全部都抓過了，無需處理', '#080'); return; }
+    log('待抓取 ' + todo.length + ' / ' + TARGET_OFFERS.length + ' 個', '#0284c7');
+    $('dbx-ids').value = todo.join('\n');
+    $('dbx-run').click();
+  };
+
+  log('就緒：填好通行碼後按綠色按鈕即可（內建 ' + TARGET_OFFERS.length + ' 個 offer）');
 })();
