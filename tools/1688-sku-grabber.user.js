@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         1688 SKU 抓取器 → didibox
 // @namespace    https://didibox.cc/
-// @version      1.1.0
+// @version      1.2.0
 // @description  在 1688 頁面批次抓取商品 SKU（skuId／規格文字／價格／庫存）並上傳到 didibox-api，供產品建立的採購下單功能比對使用
 // @match        https://*.1688.com/*
 // @grant        none
@@ -140,13 +140,23 @@
   }
 
   // ── 介面 ────────────────────────────────────────────────────────────────
+  // 收合狀態的小圓鈕：1688 自己的登入視窗、彈窗很多，面板常駐會擋到操作，
+  // 因此預設收合，只留一顆小按鈕，需要時再展開。
+  const bubble = document.createElement('div');
+  bubble.textContent = 'SKU';
+  bubble.title = 'didibox SKU 抓取器（點擊展開）';
+  bubble.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483000;width:46px;height:46px;'
+    + 'border-radius:50%;background:#0284c7;color:#fff;font:bold 13px/46px sans-serif;text-align:center;'
+    + 'cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3);user-select:none';
+  document.body.appendChild(bubble);
+
   const panel = document.createElement('div');
-  panel.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:999999;background:#fff;border:1px solid #d0d0d0;'
-    + 'border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);font:13px/1.6 sans-serif;width:320px;overflow:hidden';
+  panel.style.cssText = 'position:fixed;right:16px;bottom:70px;z-index:2147483000;background:#fff;border:1px solid #d0d0d0;'
+    + 'border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);font:13px/1.6 sans-serif;width:320px;overflow:hidden;display:none';
   panel.innerHTML = `
-    <div style="background:#0284c7;color:#fff;padding:8px 12px;font-weight:bold;display:flex;justify-content:space-between">
+    <div id="dbx-head" style="background:#0284c7;color:#fff;padding:8px 12px;font-weight:bold;display:flex;justify-content:space-between;cursor:move">
       <span>didibox SKU 抓取器</span>
-      <span id="dbx-min" style="cursor:pointer">—</span>
+      <span id="dbx-min" style="cursor:pointer;padding:0 4px">✕</span>
     </div>
     <div id="dbx-body" style="padding:12px">
       <div style="margin-bottom:8px">
@@ -178,10 +188,29 @@
 
   $('dbx-token').value = localStorage.getItem(TOKEN_KEY) || '';
   $('dbx-user').value  = localStorage.getItem(USER_KEY)  || '';
-  $('dbx-min').onclick = () => {
-    const b = $('dbx-body');
-    b.style.display = b.style.display === 'none' ? 'block' : 'none';
-  };
+  bubble.onclick = () => { panel.style.display = 'block'; bubble.style.display = 'none'; };
+  $('dbx-min').onclick = () => { panel.style.display = 'none'; bubble.style.display = 'block'; };
+
+  // 標題列可拖曳，避免固定位置剛好壓到頁面上要點的東西
+  (() => {
+    const head = $('dbx-head');
+    let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+    head.addEventListener('mousedown', e => {
+      if (e.target.id === 'dbx-min') return;
+      dragging = true;
+      const r = panel.getBoundingClientRect();
+      sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      panel.style.right = 'auto'; panel.style.bottom = 'auto';
+      panel.style.left = ox + 'px'; panel.style.top = oy + 'px';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left = Math.max(0, ox + e.clientX - sx) + 'px';
+      panel.style.top  = Math.max(0, oy + e.clientY - sy) + 'px';
+    });
+    document.addEventListener('mouseup', () => { dragging = false; });
+  })();
 
   function currentOfferId() {
     const m = location.href.match(/\/offer\/(\d+)\.html/);
