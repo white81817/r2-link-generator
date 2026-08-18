@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         1688 SKU 抓取器 → didibox
 // @namespace    https://didibox.cc/
-// @version      1.3.0
+// @version      1.5.0
 // @description  在 1688 頁面批次抓取商品 SKU（skuId／規格文字／價格／庫存）並上傳到 didibox-api，供產品建立的採購下單功能比對使用
 // @match        https://*.1688.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      detail.1688.com
 // @connect      www.1688.com
+// @connect      qr.1688.com
+// @connect      lihi2.com
 // @connect      didibox-api.adam-061.workers.dev
 // @run-at       document-idle
 // ==/UserScript==
@@ -17,6 +19,41 @@
   const API = 'https://didibox-api.adam-061.workers.dev';
 
   // 由商品資料的廠商料號解析出的全部 1688 offer，供「抓取全部」一鍵處理
+  // 料號中的短網址，需先解析出真正的目的地才知道是不是 1688 商品
+  const TARGET_SHORT_LINKS = [
+    'https://lihi2.com/3CB65',
+    'https://lihi2.com/59PS4',
+    'https://lihi2.com/5guuH',
+    'https://lihi2.com/74cq4',
+    'https://lihi2.com/BZPv0',
+    'https://lihi2.com/BhHGz',
+    'https://lihi2.com/Bv8tN',
+    'https://lihi2.com/CJuZg',
+    'https://lihi2.com/IevV4',
+    'https://lihi2.com/M3oRO',
+    'https://lihi2.com/NLOkj',
+    'https://lihi2.com/P3vQV',
+    'https://lihi2.com/QQjg3',
+    'https://lihi2.com/RgL0h',
+    'https://lihi2.com/Sg83L',
+    'https://lihi2.com/UzhPR',
+    'https://lihi2.com/V2x5L',
+    'https://lihi2.com/a89Ro',
+    'https://lihi2.com/ajIeY',
+    'https://lihi2.com/dgxJK',
+    'https://lihi2.com/fixjm',
+    'https://lihi2.com/hIPF3',
+    'https://lihi2.com/r3ofr',
+    'https://lihi2.com/rk5Bp',
+    'https://lihi2.com/tPU8B',
+    'https://lihi2.com/uQDJD',
+    'https://lihi2.com/wJHGU',
+    'https://lihi2.com/xvjxG',
+    'https://qr.1688.com/s/6Ziz0LQu',
+    'https://qr.1688.com/s/Tr8bqWG0',
+    'https://qr.1688.com/s/aL33sqEg',
+  ];
+
   const TARGET_OFFERS = [
     '1004092290315',
     '1005503266568',
@@ -75,44 +112,93 @@
 
   // ── 從商品頁的內嵌資料取出 SKU ──────────────────────────────────────────
   // 1688 會把商品資料以 JSON 放進 script，不同版型鍵名略有差異，逐一嘗試。
-  function extractSkus(html) {
+  // ── SKU 解析 ────────────────────────────────────────────────────────────
+  // 1688 商品頁版型多變，固定的鍵名正規表達式只認得部分頁面。
+  // 改為通用做法：在整份 HTML 中找出所有含 skuId 的 JSON 物件，
+  // 不依賴外層結構，因此新舊版型都能處理。
+  function findObjectsContaining(html, key, limit) {
     const out = [];
+    const SPAN = 30000;              // 單一物件的搜尋上限，避免掃過頭
+    let idx = -1;
+    while ((idx = html.indexOf(key, idx + 1)) !== -1 && out.length < (limit || 800)) {
+      // 往回找到包住它的 {
+      let depth = 0, start = -1;
+      for (let i = idx; i >= 0 && idx - i < SPAN; i--) {
+        const ch = html[i];
+        if (ch === '}') depth++;
+        else if (ch === '{') { if (depth === 0) { start = i; break; } depth--; }
+      }
+      if (start < 0) { continue; }
+
+      // 往前找到對應的 }
+      let d = 0, end = -1;
+      for (let i = start; i < html.length && i - start < SPAN; i++) {
+        const ch = html[i];
+        if (ch === '{') d++;
+        else if (ch === '}') { d--; if (d === 0) { end = i; break; } }
+      }
+      if (end < 0) { continue; }
+
+      let obj = null;
+      try { obj = JSON.parse(html.slice(start, end + 1)); } catch (e) { /* 非合法 JSON 就跳過 */ }
+      if (obj) {
+        // 規格文字常是外層 map 的鍵，往回取 "xxx": 作為補充
+        let keyName = '';
+        const before = html.slice(Math.max(0, start - 120), start);
+        const km = before.match(/"([^"]{1,80})"\s*:\s*$/);
+        if (km) keyName = km[1];
+        out.push({ obj, keyName });
+      }
+      idx = end > idx ? end : idx;
+    }
+    return out;
+  }
+
+  const pick = (o, keys) => {
+    for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
+    return null;
+  };
+
+  function extractSkus(html) {
     let title = '';
     const t = html.match(/<title>([^<]*)<\/title>/i);
     if (t) title = t[1].replace(/[-_].*(阿里巴巴|1688).*/, '').trim();
 
-    // 版型一：skuInfoMap = { "規格文字": {skuId, price, canBookCount} }
-    const m1 = html.match(/"skuInfoMap"\s*:\s*(\{.*?\})\s*,\s*"[a-zA-Z]/s);
-    if (m1) {
-      try {
-        const map = JSON.parse(m1[1]);
-        for (const [specText, v] of Object.entries(map)) {
-          out.push({
-            specText,
-            skuId: String(v.skuId ?? v.specId ?? ''),
-            price: v.price ?? v.discountPrice ?? null,
-            stock: v.canBookCount ?? v.saleCount ?? null,
-          });
-        }
-      } catch (e) { console.warn('[didibox] skuInfoMap 解析失敗', e); }
-    }
+    const found = findObjectsContaining(html, '"skuId"');
+    const seen = new Set();
+    const skus = [];
+    for (const { obj, keyName } of found) {
+      const skuId = pick(obj, ['skuId', 'specId']);
+      if (!skuId || seen.has(String(skuId))) continue;
 
-    // 版型二：skuModel.skuInfoMapList = [{skuId, specAttrs, price, canBookCount}]
-    if (!out.length) {
-      const m2 = html.match(/"skuInfoMapList"\s*:\s*(\[.*?\])\s*,\s*"[a-zA-Z]/s);
-      if (m2) {
-        try {
-          JSON.parse(m2[1]).forEach(v => out.push({
-            specText: String(v.specAttrs ?? v.specId ?? ''),
-            skuId: String(v.skuId ?? ''),
-            price: v.price ?? v.discountPrice ?? null,
-            stock: v.canBookCount ?? null,
-          }));
-        } catch (e) { console.warn('[didibox] skuInfoMapList 解析失敗', e); }
-      }
-    }
+      // 規格文字可能在物件內，也可能是外層 map 的鍵
+      let specText = pick(obj, ['specAttrs', 'specText', 'skuAttr', 'attributes', 'name']);
+      if (specText && typeof specText === 'object') specText = JSON.stringify(specText);
+      if (!specText) specText = keyName;
 
-    return { title, skus: out.filter(s => s.skuId || s.specText) };
+      let price = pick(obj, ['price', 'discountPrice', 'currentPrice', 'sellPrice']);
+      if (price && typeof price === 'object') price = pick(price, ['price', 'value']) || null;
+
+      seen.add(String(skuId));
+      skus.push({
+        skuId: String(skuId),
+        specText: String(specText || '').slice(0, 200),
+        price: price ?? null,
+        stock: pick(obj, ['canBookCount', 'saleCount', 'amountOnSale', 'stock', 'quantity']),
+      });
+    }
+    return { title, skus, rawKeys: skus.length ? null : diagnose(html) };
+  }
+
+  // 解析失敗時收集線索，用來判斷該頁用的是什麼結構
+  function diagnose(html) {
+    const keys = [...new Set((html.match(/"(sku[A-Za-z]*|spec[A-Za-z]*)"/g) || []))].slice(0, 25);
+    return {
+      htmlLength: html.length,
+      skuLikeKeys: keys,
+      hasInitData: /__INIT_DATA__|__NUXT__|__NEXT_DATA__|window\.__/.test(html),
+      looksLikeLogin: /login\.1688\.com|passport/i.test(html),
+    };
   }
 
   // GM_xmlhttpRequest 不受 CORS 限制，且會帶上目標網域的登入 cookie。
@@ -136,6 +222,23 @@
     });
   }
 
+  // 解析短網址：GM_xmlhttpRequest 會跟隨轉址並回報最終網址；
+  // 若最終網址仍非商品頁（例如中間有落地頁），再從回應內容找 1688/淘寶連結。
+  async function resolveShortLink(shortUrl) {
+    const res = await gmRequest({ url: shortUrl, headers: { 'Accept': 'text/html' } });
+    const candidates = [res.finalUrl || ''];
+    const m = (res.text || '').match(/https?:\/\/(?:detail\.1688\.com\/offer\/\d+\.html|item\.taobao\.com[^"'\s]*|detail\.tmall\.com[^"'\s]*)/i);
+    if (m) candidates.push(m[0]);
+
+    for (const c of candidates) {
+      const offer = (c.match(/detail\.1688\.com\/offer\/(\d+)\.html/) || [])[1];
+      if (offer) return { shortUrl, offerId: offer, finalUrl: c, platform: '1688' };
+    }
+    const other = candidates.find(c => /taobao|tmall/i.test(c));
+    if (other) return { shortUrl, offerId: null, finalUrl: other, platform: /tmall/i.test(other) ? '天貓' : '淘寶' };
+    return { shortUrl, offerId: null, finalUrl: res.finalUrl || '', platform: '未知' };
+  }
+
   async function fetchOffer(offerId) {
     // 同源請求，自動帶登入 cookie
     const url = `https://detail.1688.com/offer/${offerId}.html`;
@@ -152,8 +255,12 @@
     if (/login\.1688\.com|滑动验证|安全验证|请输入验证码/i.test(html)) {
       throw new Error('被要求登入或出現驗證，請先在瀏覽器完成驗證再重試');
     }
-    const { title, skus } = extractSkus(html);
-    if (!skus.length) throw new Error('頁面解析不到 SKU（版型可能不同）');
+    const { title, skus, rawKeys } = extractSkus(html);
+    if (!skus.length) {
+      const e = new Error('頁面解析不到 SKU');
+      e.diagnostic = rawKeys;
+      throw e;
+    }
     return { offerId, title, url, skus, fetchedAt: new Date().toISOString() };
   }
 
@@ -275,6 +382,7 @@
 
     log(`開始抓取 ${ids.length} 個 offer…`, '#0284c7');
     const offers = {};
+    const failedDiag = {};
     let okCount = 0;
     for (const id of ids) {
       try {
@@ -284,11 +392,19 @@
         log(`✓ ${id}　${data.skus.length} 個 SKU　${data.title.slice(0, 18)}`, '#080');
       } catch (e) {
         log(`✗ ${id}　${e.message}`, '#c00');
+        if (e.diagnostic) {
+          log('   線索：' + JSON.stringify(e.diagnostic).slice(0, 300), '#888');
+          failedDiag[id] = e.diagnostic;
+        }
       }
       // 放慢速度避免觸發風控
       await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
     }
 
+    if (Object.keys(failedDiag).length) {
+      window.__didiboxFailedDiag = failedDiag;
+      log('解析失敗的診斷資料已存於 window.__didiboxFailedDiag，可複製回報', '#c60');
+    }
     if (!okCount) { log('沒有成功的資料，不上傳', '#c00'); return; }
     try {
       const r = await api('/api/1688/skus', {
@@ -318,12 +434,31 @@
       log('查詢失敗（將全部重抓）：' + e.message, '#c60');
     }
 
-    const todo = TARGET_OFFERS.filter(id => !done.has(id));
+    // 先解析短網址，把其中的 1688 商品併入待抓清單
+    const extra = [];
+    if (TARGET_SHORT_LINKS.length) {
+      log('解析 ' + TARGET_SHORT_LINKS.length + ' 個短網址…', '#0284c7');
+      const stat = { '1688': 0, '淘寶': 0, '天貓': 0, '未知': 0, '失敗': 0 };
+      for (const su of TARGET_SHORT_LINKS) {
+        try {
+          const r = await resolveShortLink(su);
+          stat[r.platform] = (stat[r.platform] || 0) + 1;
+          if (r.offerId) { extra.push(r.offerId); log('  ' + su.slice(-8) + ' → 1688 ' + r.offerId, '#080'); }
+          else log('  ' + su.slice(-8) + ' → ' + r.platform, '#888');
+        } catch (e) { stat['失敗']++; log('  ' + su.slice(-8) + ' → 解析失敗：' + e.message, '#c60'); }
+        await new Promise(r => setTimeout(r, 700 + Math.random() * 500));
+      }
+      log('短網址解析完成：1688 ' + stat['1688'] + '　淘寶/天貓 ' + (stat['淘寶'] + stat['天貓'])
+          + '　未知 ' + stat['未知'] + '　失敗 ' + stat['失敗'], '#0284c7');
+    }
+
+    const allTargets = [...new Set([...TARGET_OFFERS, ...extra])];
+    const todo = allTargets.filter(id => !done.has(id));
     if (!todo.length) { log('全部都抓過了，無需處理', '#080'); return; }
-    log('待抓取 ' + todo.length + ' / ' + TARGET_OFFERS.length + ' 個', '#0284c7');
+    log('待抓取 ' + todo.length + ' / ' + allTargets.length + ' 個', '#0284c7');
     $('dbx-ids').value = todo.join('\n');
     $('dbx-run').click();
   };
 
-  log('就緒：填好通行碼後按綠色按鈕即可（內建 ' + TARGET_OFFERS.length + ' 個 offer）');
+  log('就緒：內建 ' + TARGET_OFFERS.length + ' 個 offer、' + TARGET_SHORT_LINKS.length + ' 個短網址待解析');
 })();
