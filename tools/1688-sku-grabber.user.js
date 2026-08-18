@@ -1,10 +1,13 @@
 // ==UserScript==
 // @name         1688 SKU 抓取器 → didibox
 // @namespace    https://didibox.cc/
-// @version      1.2.0
+// @version      1.3.0
 // @description  在 1688 頁面批次抓取商品 SKU（skuId／規格文字／價格／庫存）並上傳到 didibox-api，供產品建立的採購下單功能比對使用
 // @match        https://*.1688.com/*
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @connect      detail.1688.com
+// @connect      www.1688.com
+// @connect      didibox-api.adam-061.workers.dev
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -112,11 +115,40 @@
     return { title, skus: out.filter(s => s.skuId || s.specText) };
   }
 
+  // GM_xmlhttpRequest 不受 CORS 限制，且會帶上目標網域的登入 cookie。
+  // 這是本腳本能跨子網域抓 detail.1688.com 的關鍵（一般 fetch 會被擋）。
+  function gmRequest(opts) {
+    return new Promise((resolve, reject) => {
+      if (typeof GM_xmlhttpRequest !== 'function') {
+        reject(new Error('GM_xmlhttpRequest 不可用，請確認腳本標頭含 @grant GM_xmlhttpRequest 並重新安裝'));
+        return;
+      }
+      GM_xmlhttpRequest({
+        method: opts.method || 'GET',
+        url: opts.url,
+        headers: opts.headers || {},
+        data: opts.data,
+        timeout: 30000,
+        onload: r => resolve({ status: r.status, text: r.responseText, finalUrl: r.finalUrl }),
+        onerror: () => reject(new Error('連線失敗')),
+        ontimeout: () => reject(new Error('逾時')),
+      });
+    });
+  }
+
   async function fetchOffer(offerId) {
     // 同源請求，自動帶登入 cookie
     const url = `https://detail.1688.com/offer/${offerId}.html`;
-    const res = await fetch(url, { credentials: 'include' });
-    const html = await res.text();
+    const res = await gmRequest({
+      url,
+      headers: {
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Referer': 'https://www.1688.com/',
+      },
+    });
+    if (res.status !== 200) throw new Error('HTTP ' + res.status);
+    const html = res.text;
     if (/login\.1688\.com|滑动验证|安全验证|请输入验证码/i.test(html)) {
       throw new Error('被要求登入或出現驗證，請先在瀏覽器完成驗證再重試');
     }
@@ -126,16 +158,18 @@
   }
 
   async function api(path, options) {
-    const res = await fetch(API + path, {
-      ...options,
+    const res = await gmRequest({
+      url: API + path,
+      method: (options && options.method) || 'GET',
       headers: {
         'Content-Type': 'application/json',
         'X-Quote-Token': localStorage.getItem(TOKEN_KEY) || '',
-        ...(options && options.headers),
       },
+      data: options && options.body,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    let data = {};
+    try { data = JSON.parse(res.text); } catch (e) { /* 非 JSON 時保留空物件 */ }
+    if (res.status < 200 || res.status >= 300) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
   }
 
