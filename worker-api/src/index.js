@@ -10,6 +10,8 @@ const ALLOWED_ORIGINS = [
   'https://ec.mallbic.com',
   'https://admin.1shop.tw',
   'https://scm.mamilove.com.tw',
+  'https://detail.1688.com',              // 1688 SKU 抓取腳本
+  'https://www.1688.com',
 ];
 
 function corsHeaders(origin) {
@@ -37,8 +39,8 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-18-1688-probe',
-  features: ['erp', 'cache', 'quotes', 'products', '1688probe'],
+  version: '2026-08-18-1688-skudb',
+  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb'],
   timestamp: new Date().toISOString(),
 }));
 
@@ -760,6 +762,85 @@ app.get('/api/1688/offer', async (c) => {
     // 抓不到時附上片段，用來判斷 1688 回了什麼
     sample: (skus.length || blocked) ? undefined : html.slice(0, 400),
   });
+});
+
+// ── 1688 SKU 資料庫 ────────────────────────────────────────────────────────
+// 由瀏覽器端的使用者腳本在 1688 頁面抓取後上傳（帶登入 cookie，成功率最高）。
+// KV 以單一鍵存放 offerId → SKU 清單的對照表。
+const SKU1688_KEY = 'sku1688:all';
+
+async function readSku1688(env) {
+  const raw = await env.CACHE.get(SKU1688_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+// GET /api/1688/skus            取得全部
+// GET /api/1688/skus?id=123456  取得單一 offer
+app.get('/api/1688/skus', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const all = await readSku1688(c.env);
+  const id = (c.req.query('id') || '').trim();
+  if (id) {
+    return all[id] ? c.json(all[id]) : c.json({ error: '尚未收錄此 offer' }, 404);
+  }
+  return c.json({
+    count: Object.keys(all).length,
+    offers: all,
+  });
+});
+
+// POST /api/1688/skus  body: { offers: { "<offerId>": {title,url,skus:[...],fetchedAt} } }
+// 以 offerId 為單位覆蓋更新，未包含的 offer 保持不變。
+app.post('/api/1688/skus', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const incoming = body && body.offers;
+  if (!incoming || typeof incoming !== 'object') return c.json({ error: '缺少 offers' }, 400);
+
+  const all = await readSku1688(c.env);
+  const now = new Date().toISOString();
+  const saved = [];
+  for (const [offerId, data] of Object.entries(incoming)) {
+    if (!/^\d+$/.test(offerId) || !data || !Array.isArray(data.skus)) continue;
+    all[offerId] = {
+      offerId,
+      title: String(data.title || '').slice(0, 200),
+      url:   String(data.url || ''),
+      skus:  data.skus.slice(0, 500).map(s => ({
+        skuId:    String(s.skuId || ''),
+        specText: String(s.specText || '').slice(0, 200),
+        price:    s.price ?? null,
+        stock:    s.stock ?? null,
+      })),
+      fetchedAt: data.fetchedAt || now,
+      uploadedBy: String(body.uploadedBy || '').slice(0, 40),
+    };
+    saved.push(offerId);
+  }
+  if (!saved.length) return c.json({ error: '沒有有效的 offer 資料' }, 400);
+
+  await c.env.CACHE.put(SKU1688_KEY, JSON.stringify(all));
+  return c.json({ ok: true, saved: saved.length, offerIds: saved, total: Object.keys(all).length });
+});
+
+// DELETE /api/1688/skus?id=123456   移除單一 offer（重抓前清資料用）
+app.delete('/api/1688/skus', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+  const id = (c.req.query('id') || '').trim();
+  if (!id) return c.json({ error: '需要 id' }, 400);
+
+  const all = await readSku1688(c.env);
+  if (!all[id]) return c.json({ error: '找不到此 offer' }, 404);
+  delete all[id];
+  await c.env.CACHE.put(SKU1688_KEY, JSON.stringify(all));
+  return c.json({ ok: true, total: Object.keys(all).length });
 });
 
 // ── Fetch handler：外層 wrapper 確保 CORS 覆蓋所有 response ─────────────────
