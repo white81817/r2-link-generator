@@ -2330,6 +2330,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <button onclick="clearProductForm()" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium">
           清除全部
         </button>
+        <label class="bg-purple-100 hover:bg-purple-200 text-purple-800 px-4 py-2 rounded-lg font-medium cursor-pointer self-center text-sm" title="匯入 USALE 匯出的商品資料，依商品編號歸群為商品與規格">
+          ⬆ 匯入 USALE 商品資料
+          <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importUsaleProducts(event)">
+        </label>
         <span id="saveStatus" class="self-center text-sm text-gray-500"></span>
       </div>
 
@@ -3460,6 +3464,139 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         momoNotes.push(`・momo 專推圖最多 20 張，你選了 ${imgs.length} 張，第 21 張之後未放入。`);
       }
       if (momoNotes.length) alert('匯出完成，請留意：\n\n' + momoNotes.join('\n'));
+    }
+
+    // ===== 匯入 USALE 商品資料 =====
+    // 來源為 USALE 匯出的「商品資料」工作表，一列一個規格，以商品編號歸群為商品。
+    const USALE_TAG_RE = /【([^】]+)】/g;
+
+    function parseUsaleTags(raw) {
+      const all = [...String(raw || '').matchAll(USALE_TAG_RE)].map(m => m[1].trim());
+      const known = new Set(Array.from(document.querySelectorAll('#p_tags .tag-cb')).map(cb => cb.value));
+      return {
+        checked: all.filter(t => known.has(t)),
+        custom:  all.filter(t => !known.has(t)),
+      };
+    }
+
+    function usaleRowsToProducts(rows) {
+      const byCode = new Map();
+      rows.forEach(r => {
+        const code = String(r['商品編號'] || '').trim();
+        if (!code) return;
+        if (!byCode.has(code)) {
+          const tags = parseUsaleTags(r['商品標籤']);
+          byCode.set(code, {
+            code,
+            name:        String(r['商品名稱'] || '').trim(),
+            vendor:      String(r['廠商'] || '').trim(),
+            description: String(r['商品備註'] || '').trim(),
+            highlight:   '',
+            tagsChecked: tags.checked,
+            tagsCustom:  tags.custom.join(','),
+            opt1Name:    '樣式',
+            opt2Name:    '尺寸',
+            variants:    [],
+            savedAt:     new Date().toLocaleString('zh-TW'),
+            importedFrom: 'usale',
+          });
+        }
+        const p = byCode.get(code);
+        const num = v => (v === null || v === undefined || v === '') ? '' : String(v);
+        p.variants.push({
+          idx:          p.variants.length + 1,
+          style:        String(r['樣式'] || '').trim(),
+          size:         String(r['尺寸'] || '').trim(),
+          wholesale:    num(r['廠商批價']),
+          vendorCode:   String(r['廠商料號'] || '').trim(),
+          weight:       num(r['重量']),
+          len:          num(r['長']),
+          wid:          num(r['寬']),
+          hei:          num(r['高']),
+          sell:         num(r['售價']),
+          shopeeSell:   '',
+          stock:        num(r['可用庫存'] ?? r['實際庫存(可用庫存+配貨)']),
+          preorder:     '',
+          safety:       num(r['安全庫存(總量)']),
+          validDays:    num(r['有效天數']),
+          deliveryDays: num(r['交貨天數']),
+          salesMode:    String(r['銷售模式(可追/售完/下架)'] || '可追').trim(),
+          barcode:      String(r['品項條碼'] || '').trim(),
+          barcodeManual: true,
+          variantImg:   '',
+        });
+      });
+      return [...byCode.values()];
+    }
+
+    async function importUsaleProducts(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const wb = XLSX.read(await file.arrayBuffer());
+        const sheetName = wb.SheetNames.find(n => n.includes('商品資料')) || wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
+        if (!rows.length || !('商品編號' in rows[0])) {
+          alert('這份檔案看起來不是 USALE 的商品資料（找不到「商品編號」欄位）');
+          return;
+        }
+
+        const products = usaleRowsToProducts(rows);
+        if (!products.length) { alert('檔案中沒有可匯入的商品'); return; }
+
+        // 判斷重複：本機與共用庫都算，避免覆蓋既有資料
+        const localDB = getDB();
+        const sharedCodes = new Set(sharedList.map(x => x.code));
+        const dup = products.filter(p => localDB[p.code] || sharedCodes.has(p.code));
+        const fresh = products.filter(p => !localDB[p.code] && !sharedCodes.has(p.code));
+
+        let overwrite = false;
+        if (dup.length) {
+          const sample = dup.slice(0, 8).map(p => p.code).join('、');
+          overwrite = confirm(
+            `檔案共 ${products.length} 個商品（${rows.length} 個規格）\n` +
+            `其中 ${dup.length} 個已存在：${sample}${dup.length > 8 ? ' …' : ''}\n\n` +
+            `按「確定」：連同已存在的一起覆蓋更新\n` +
+            `按「取消」：只匯入 ${fresh.length} 個新商品，已存在的保持不變`
+          );
+        } else if (!confirm(`要匯入 ${products.length} 個商品（${rows.length} 個規格）嗎？`)) {
+          return;
+        }
+
+        const toImport = overwrite ? products : fresh;
+        if (!toImport.length) { alert('沒有需要匯入的商品'); return; }
+
+        // 一律先寫入本機，已連線共用庫則一併上傳
+        const db = getDB();
+        toImport.forEach(p => { db[p.code] = p; });
+        setDB(db);
+        renderSavedList();
+
+        let uploaded = 0, failed = [];
+        if (shareToken) {
+          for (const p of toImport) {
+            const { ok } = await shareApi(`/api/products/${encodeURIComponent(p.code)}`, {
+              method: 'PUT',
+              body: JSON.stringify({ data: p, force: true, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+            });
+            ok ? uploaded++ : failed.push(p.code);
+          }
+          await refreshSharedList();
+        }
+
+        alert(
+          `匯入完成\n` +
+          `・寫入本機：${toImport.length} 個商品\n` +
+          (overwrite ? '' : (dup.length ? `・略過已存在：${dup.length} 個\n` : '')) +
+          (shareToken
+            ? `・上傳共用庫：成功 ${uploaded} 個${failed.length ? `，失敗 ${failed.length} 個（${failed.join('、')}）` : ''}`
+            : '・未連線共用庫，資料僅存在本機')
+        );
+      } catch (e) {
+        alert('匯入失敗：' + e.message);
+      } finally {
+        event.target.value = '';
+      }
     }
 
     function clearProductForm() {
