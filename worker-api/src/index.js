@@ -37,8 +37,8 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-12-products-delete-any',
-  features: ['erp', 'cache', 'quotes', 'products'],
+  version: '2026-08-18-1688-probe',
+  features: ['erp', 'cache', 'quotes', 'products', '1688probe'],
   timestamp: new Date().toISOString(),
 }));
 
@@ -687,6 +687,79 @@ app.delete('/api/products/:code', async (c) => {
     await c.env.CACHE.put('product:list', JSON.stringify(list));
   }
   return c.json({ ok: true });
+});
+
+// ── 1688 商品資料探測 ───────────────────────────────────────────────────────
+// 用途：確認 Cloudflare 伺服器端能否讀到 1688 商品頁，並嘗試解析 SKU。
+// 1688 有反爬機制，抓不到屬預期結果之一，回傳診斷資訊供判斷該走哪條路。
+app.get('/api/1688/offer', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const id = (c.req.query('id') || '').trim();
+  if (!/^\d+$/.test(id)) return c.json({ error: 'id 需為數字的 1688 offer id' }, 400);
+
+  const url = `https://detail.1688.com/offer/${id}.html`;
+  let res, html = '';
+  try {
+    res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      },
+      redirect: 'follow',
+    });
+    html = await res.text();
+  } catch (e) {
+    return c.json({ ok: false, stage: 'fetch', error: e.message, url }, 502);
+  }
+
+  // 判斷是否被導去登入或風控頁
+  const blocked =
+    /login\.1688\.com|passport|滑动验证|安全验证|验证码|请输入验证码/i.test(html) ||
+    /sec\.1688\.com|punish/i.test(res.url || '');
+
+  // 1688 會把商品資料以 JSON 內嵌於 script，嘗試幾種常見鍵名
+  const skus = [];
+  let title = '';
+  const t = html.match(/<title>([^<]*)<\/title>/i);
+  if (t) title = t[1].trim();
+
+  // skuInfoMap / skuProps 是常見的規格結構
+  const grab = (re) => { const m = html.match(re); return m ? m[1] : null; };
+  const skuInfoRaw = grab(/"skuInfoMap"\s*:\s*(\{.*?\})\s*,\s*"/s);
+  const skuPropsRaw = grab(/"skuProps"\s*:\s*(\[.*?\])\s*,\s*"/s);
+
+  if (skuInfoRaw) {
+    try {
+      const map = JSON.parse(skuInfoRaw);
+      for (const [specText, v] of Object.entries(map)) {
+        skus.push({
+          specText,
+          skuId: String(v.skuId || v.specId || ''),
+          price: v.price ?? v.discountPrice ?? null,
+          stock: v.canBookCount ?? v.saleCount ?? null,
+        });
+      }
+    } catch (e) { /* 解析失敗時保留診斷資訊即可 */ }
+  }
+
+  return c.json({
+    ok: !blocked && skus.length > 0,
+    url,
+    finalUrl: res.url || url,
+    httpStatus: res.status,
+    htmlLength: html.length,
+    title,
+    blocked,
+    hasSkuInfoMap: !!skuInfoRaw,
+    hasSkuProps: !!skuPropsRaw,
+    skuCount: skus.length,
+    skus: skus.slice(0, 50),
+    // 抓不到時附上片段，用來判斷 1688 回了什麼
+    sample: (skus.length || blocked) ? undefined : html.slice(0, 400),
+  });
 });
 
 // ── Fetch handler：外層 wrapper 確保 CORS 覆蓋所有 response ─────────────────
