@@ -1,0 +1,14 @@
+{
+  "name": "didibox-1688-tools",
+  "private": true,
+  "type": "module",
+  "description": "1688 SKU 抓取工具（Playwright，需本機 Chrome）",
+  "scripts": {
+    "sku": "node 1688-sku-fetch.mjs --from-userscript",
+    "short": "node 1688-sku-fetch.mjs --resolve-short",
+    "login": "node 1688-sku-fetch.mjs --login"
+  },
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}
