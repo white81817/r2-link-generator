@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-18-1688-skudb',
+  version: '2026-08-20-1688-skudb-v2',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb'],
   timestamp: new Date().toISOString(),
 }));
@@ -768,9 +768,17 @@ app.get('/api/1688/offer', async (c) => {
 // 由瀏覽器端的使用者腳本在 1688 頁面抓取後上傳（帶登入 cookie，成功率最高）。
 // KV 以單一鍵存放 offerId → SKU 清單的對照表。
 const SKU1688_KEY = 'sku1688:all';
+// 料號欄位有 87 筆記的是 lihi2 短網址，前端無法自行展開，
+// 因此另存一份 短網址 → offerId 的對照表。
+const SKU1688_SHORT_KEY = 'sku1688:shortlinks';
 
 async function readSku1688(env) {
   const raw = await env.CACHE.get(SKU1688_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+async function readSku1688Short(env) {
+  const raw = await env.CACHE.get(SKU1688_SHORT_KEY);
   return raw ? JSON.parse(raw) : {};
 }
 
@@ -785,9 +793,11 @@ app.get('/api/1688/skus', async (c) => {
   if (id) {
     return all[id] ? c.json(all[id]) : c.json({ error: '尚未收錄此 offer' }, 404);
   }
+  const shortLinks = await readSku1688Short(c.env);
   return c.json({
     count: Object.keys(all).length,
     offers: all,
+    shortLinks,
   });
 });
 
@@ -812,21 +822,42 @@ app.post('/api/1688/skus', async (c) => {
       offerId,
       title: String(data.title || '').slice(0, 200),
       url:   String(data.url || ''),
+      // specId 與 unitPrice 是下單階段要用的：specId 進採購車，
+      // unitPrice 已統一為「買 1 件的單價」（階梯價商品取自 skuRangePrices）。
       skus:  data.skus.slice(0, 500).map(s => ({
-        skuId:    String(s.skuId || ''),
-        specText: String(s.specText || '').slice(0, 200),
-        price:    s.price ?? null,
-        stock:    s.stock ?? null,
+        skuId:        String(s.skuId || ''),
+        specId:       String(s.specId || ''),
+        specText:     String(s.specText || '').slice(0, 200),
+        price:        s.price ?? null,
+        unitPrice:    s.unitPrice ?? s.price ?? null,
+        priceSource:  s.priceSource || (s.price ? 'sku' : 'none'),
+        canBookCount: s.canBookCount ?? null,
+        stock:        s.stock ?? s.canBookCount ?? null,
       })),
+      beginNum:   data.beginNum ?? null,
+      priceScale: data.priceScale ?? null,
       fetchedAt: data.fetchedAt || now,
       uploadedBy: String(body.uploadedBy || '').slice(0, 40),
     };
     saved.push(offerId);
   }
-  if (!saved.length) return c.json({ error: '沒有有效的 offer 資料' }, 400);
 
-  await c.env.CACHE.put(SKU1688_KEY, JSON.stringify(all));
-  return c.json({ ok: true, saved: saved.length, offerIds: saved, total: Object.keys(all).length });
+  // 短網址對照表：{ "https://lihi2.com/xxxxx": "<offerId>" }，累加更新
+  let shortSaved = 0;
+  if (body.shortLinks && typeof body.shortLinks === 'object') {
+    const shortAll = await readSku1688Short(c.env);
+    for (const [url, offerId] of Object.entries(body.shortLinks)) {
+      if (!/^https?:\/\//.test(url) || !/^\d+$/.test(String(offerId))) continue;
+      shortAll[url] = String(offerId);
+      shortSaved++;
+    }
+    if (shortSaved) await c.env.CACHE.put(SKU1688_SHORT_KEY, JSON.stringify(shortAll));
+  }
+
+  if (!saved.length && !shortSaved) return c.json({ error: '沒有有效的 offer 資料' }, 400);
+
+  if (saved.length) await c.env.CACHE.put(SKU1688_KEY, JSON.stringify(all));
+  return c.json({ ok: true, saved: saved.length, shortSaved, offerIds: saved, total: Object.keys(all).length });
 });
 
 // DELETE /api/1688/skus?id=123456   移除單一 offer（重抓前清資料用）
