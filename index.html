@@ -2259,9 +2259,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               <input type="checkbox" id="syncToggle" class="w-4 h-4">
               <span>🔗 同步共用欄位</span>
             </label>
+            <button onclick="match1688All()" id="btn1688Match" class="bg-orange-500 text-white px-4 py-1.5 rounded text-sm hover:bg-orange-600" title="用廠商料號的規格文字比對 1688 SKU 庫，帶出 skuId 與人民幣單價">🔍 比對 1688 SKU</button>
             <button onclick="addVariantRow()" class="bg-blue-500 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-600">＋ 新增規格</button>
           </div>
         </div>
+        <div id="sku1688Status" class="text-xs text-gray-400 mb-2 hidden"></div>
         <p class="text-xs text-gray-400 mb-3">
           <span class="text-blue-400">🔗 同步：批價、料號、重量、長寬高、安全庫存、有效天數、交貨天數、銷售模式</span>
         </p>
@@ -2281,6 +2283,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 </th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">廠商批價 <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap">廠商料號 <span class="text-red-400">*</span></th>
+                <th class="border px-2 py-2 text-left whitespace-nowrap bg-orange-50">1688 SKU<br><span class="font-normal text-gray-400">比對帶出</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">重量(kg) <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">長(cm)<br><span class="font-normal text-gray-400">USALE/momo</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">寬(cm)<br><span class="font-normal text-gray-400">USALE/momo</span></th>
@@ -2656,6 +2659,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           oninput="calcVariant(this.closest('tr'));syncFromRow(this.closest('tr'),'v-wholesale')"></td>
         <td class="border px-1 py-1"><input class="v-vendor-code w-20 border-0 bg-transparent px-1 text-sm" type="text" value="${d.vendorCode||''}" placeholder="1098"
           oninput="syncFromRow(this.closest('tr'),'v-vendor-code')"></td>
+        <td class="border px-1 py-1 bg-orange-50">
+          <input class="v-sku1688 w-28 border-0 bg-transparent px-1 text-xs font-mono text-gray-600" type="text" readonly tabindex="-1"
+            value="${d.sku1688 ? String(d.sku1688.skuId || '') : ''}" data-sku='${d.sku1688 ? JSON.stringify(d.sku1688).replace(/'/g, "&#39;") : ''}' placeholder="未比對">
+          <div class="v-sku1688-price text-xs text-gray-400 px-1">${d.sku1688 && d.sku1688.unitPrice ? '¥' + d.sku1688.unitPrice : ''}</div>
+        </td>
         <td class="border px-1 py-1"><input class="v-weight w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.01" value="${d.weight||''}" placeholder="0"
           oninput="calcVariant(this.closest('tr'));syncFromRow(this.closest('tr'),'v-weight')"></td>
         <td class="border px-1 py-1"><input class="v-len w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.1" value="${d.len||''}" placeholder="0"
@@ -2699,6 +2707,140 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       refreshVariantImageSelects();
       if (d.wholesale || d.weight) calcVariant(tr);
       return tr;
+    }
+
+    // ===== 1688 SKU 比對 =====
+    // 廠商料號欄位是人工記錄的，格式為「規格文字<br>網址」，例如
+    //   高2.6米【2根】管粗25mm+收纳袋<br>https://detail.1688.com/offer/933370072634.html?...
+    // 規格文字是使用者在 1688 頁面上看到的選項文字，不是 skuId，所以要靠文字比對。
+    let sku1688DB = null;   // { offers: {offerId: {...}}, shortLinks: {url: offerId} }
+
+    function readRowSku1688(tr) {
+      const el = tr.querySelector('.v-sku1688');
+      if (!el || !el.dataset.sku) return null;
+      try { return JSON.parse(el.dataset.sku); } catch { return null; }
+    }
+
+    // skuInfoMap 的 key 在多規格軸商品會用 &gt;（HTML 逸出的 >）串接各軸，
+    // 例如「高2.6米【2根】管粗25mm+收纳袋&gt;黑色」；料號記的是第一軸的文字。
+    function norm1688(text) {
+      return String(text || '')
+        .replace(/&gt;/g, '>').replace(/&lt;/g, '<')
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/[（）]/g, (m) => (m === '（' ? '(' : ')'))
+        .replace(/\s+/g, '')
+        .toLowerCase();
+    }
+    const firstAxis1688 = (text) => norm1688(text).split('>')[0];
+
+    // 料號 → { specText, offerId }；短網址靠 KV 的對照表展開
+    function parseVendorCode(raw, shortLinks) {
+      const text = String(raw || '').replace(/<br\s*\/?>/gi, '\n');
+      const urlMatch = text.match(/https?:\/\/[^\s"'<>]+/);
+      const url = urlMatch ? urlMatch[0] : '';
+      const specText = text.replace(url, '').replace(/\n/g, ' ').trim();
+
+      let offerId = '';
+      const direct = url.match(/\/offer\/(\d+)\.html/) || url.match(/[?&]offerId=(\d+)/);
+      if (direct) {
+        offerId = direct[1];
+      } else if (url && shortLinks) {
+        // 短網址可能帶查詢字串，先原樣比對再去掉查詢字串比對
+        offerId = shortLinks[url] || shortLinks[url.split('?')[0]] || '';
+      }
+      const nonAli = /taobao\.com|tmall\.com/.test(url);
+      return { specText, url, offerId, nonAli };
+    }
+
+    // 在單一 offer 的 SKU 清單裡找符合料號規格文字的那一筆
+    function match1688Sku(specText, offer) {
+      const target = norm1688(specText);
+      if (!target || !offer || !Array.isArray(offer.skus)) return null;
+
+      const pick = (list, how) => (list.length === 1 ? { ...list[0], how } : null);
+      return pick(offer.skus.filter(s => firstAxis1688(s.specText) === target), '第一軸完全相同')
+        || pick(offer.skus.filter(s => norm1688(s.specText) === target), '整串完全相同')
+        || pick(offer.skus.filter(s => firstAxis1688(s.specText).startsWith(target)), '第一軸開頭相符')
+        || pick(offer.skus.filter(s => norm1688(s.specText).includes(target)), '包含');
+    }
+
+    function setSku1688Status(html, cls) {
+      const el = document.getElementById('sku1688Status');
+      el.className = 'text-xs mb-2 ' + (cls || 'text-gray-400');
+      el.innerHTML = html;
+      el.classList.remove('hidden');
+    }
+
+    async function load1688Skus(force) {
+      if (sku1688DB && !force) return sku1688DB;
+      if (!shareToken) throw new Error('請先在下方「共用商品庫」輸入通行碼連線');
+      const { ok, status, data } = await shareApi('/api/1688/skus');
+      if (!ok) throw new Error(status === 401 ? '通行碼未授權' : (data.error || `讀取失敗（${status}）`));
+      sku1688DB = { offers: data.offers || {}, shortLinks: data.shortLinks || {} };
+      return sku1688DB;
+    }
+
+    async function match1688All() {
+      const btn = document.getElementById('btn1688Match');
+      btn.disabled = true;
+      setSku1688Status('讀取 1688 SKU 庫…');
+      let db;
+      try {
+        db = await load1688Skus(true);
+      } catch (e) {
+        setSku1688Status('✗ ' + e.message, 'text-red-500');
+        btn.disabled = false;
+        return;
+      }
+
+      const rows = Array.from(document.querySelectorAll('#variantRows tr'));
+      const miss = [];
+      let hit = 0;
+      rows.forEach((tr, i) => {
+        const out = tr.querySelector('.v-sku1688');
+        const raw = tr.querySelector('.v-vendor-code').value;
+        const { specText, url, offerId, nonAli } = parseVendorCode(raw, db.shortLinks);
+
+        const priceEl = tr.querySelector('.v-sku1688-price');
+        const fail = (why) => {
+          out.value = '';
+          out.dataset.sku = '';
+          out.title = why;
+          priceEl.textContent = '';
+          miss.push(`第${i + 1}列：${why}`);
+        };
+
+        if (!specText && !url) return fail('料號是空的');
+        if (nonAli) return fail('料號指向淘寶／天貓，不是 1688');
+        if (!offerId) return fail(url ? '網址無法對應到 offer（短網址尚未收錄？）' : '料號沒有網址');
+
+        const offer = db.offers[offerId];
+        if (!offer) return fail(`offer ${offerId} 尚未收錄進 SKU 庫`);
+
+        const m = match1688Sku(specText, offer);
+        if (!m) return fail(`offer ${offerId} 裡找不到規格「${specText}」`);
+
+        const rec = {
+          offerId, skuId: m.skuId, specId: m.specId,
+          specText: m.specText, unitPrice: m.unitPrice,
+          priceSource: m.priceSource, matchedBy: m.how,
+        };
+        out.value = m.skuId;
+        out.dataset.sku = JSON.stringify(rec);
+        out.title = `${m.specText}\n¥${m.unitPrice ?? '—'}（${m.priceSource === 'range' ? '階梯價' : '單一價'}）\n比對方式：${m.how}`;
+        priceEl.textContent = m.unitPrice ? `¥${m.unitPrice}${m.priceSource === 'range' ? '(階梯)' : ''}` : '';
+        out.classList.toggle('text-orange-600', m.how !== '第一軸完全相同');
+        hit++;
+      });
+
+      const total = rows.length;
+      const detail = miss.length ? '<br>' + miss.map(x => '• ' + x).join('<br>') : '';
+      setSku1688Status(
+        `比對完成：${hit}/${total} 列對到 SKU（SKU 庫收錄 ${Object.keys(db.offers).length} 個 offer）${detail}`,
+        miss.length ? 'text-orange-600' : 'text-green-600',
+      );
+      btn.disabled = false;
     }
 
     // ===== 儲存資料庫 =====
@@ -3159,6 +3301,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         salesMode:    tr.querySelector('.v-sales-mode').value,
         barcode:      tr.querySelector('.v-barcode').value.trim(),
         barcodeManual: !!tr.querySelector('.v-barcode').dataset.manual,
+        sku1688:      readRowSku1688(tr),
       }));
     }
 

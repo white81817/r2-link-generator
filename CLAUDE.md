@@ -47,10 +47,10 @@
 
 ## 進行中的任務：1688 採購下單
 
-目標分三階段，**目前卡在第一階段**：
+目標分三階段：
 
-1. **抓 offer 的 SKU 清單** ← 進行中
-2. 料號文字 → skuId 比對（尚未開始）
+1. **抓 offer 的 SKU 清單** ← 已解決（改用 Playwright，見下）
+2. 料號文字 → skuId 比對 ← 進行中
 3. 加入採購車／產生採購單（尚未開始）
 
 使用者明確表示：**實際送出訂單與付款保持人工**，不做全自動下單。
@@ -89,12 +89,115 @@
 4. **Tampermonkey 執行於隔離沙箱** —— 直接讀 `window` 看不到 1688 掛載的變數，須用 `unsafeWindow`。
 5. **`Object.keys(window)` 有 200+ 個屬性** —— 若對走訪設了鍵數上限，會導致根本沒往下走訪。
 
+### 實際頁面結構（2026-08-18 用 Playwright 實測 634162136992、933370072634）
+
+SKU 資料在商品頁 SSR 就備妥，掛在：
+
+```
+window.context.result.data.Root.fields.dataJson.skuModel
+  ├ skuProps    規格軸定義：[{ fid, prop:'颜色', value:[{ name, imageUrl }] }]
+  ├ skuInfoMap  key = 頁面顯示的規格文字，value = { skuId, specId, price,
+  │             discountPrice, canBookCount, saleCount, isPromotionSku }
+  └ skuPriceScale
+```
+
+同層 `dataJson` 另有 `isSkuOffer`、`isPricePrivate`、
+`orderParamModel.orderParam`（起訂量 beginNum、混批 mixParam、skuRangePrices）。
+
+- **不需登入**即可取得完整 skuId 與價格（`isPricePrivate` 為 false 的商品）。
+- 頁面沒有 `__INIT_DATA__` 之類的舊全域，只有 `window.context`；找不到時腳本會遞迴掃 window 找 `skuModel`。
+- 會跳阿里滑塊驗證（`_____tmd_____` / punish），**這是真的驗證頁，不是誤判**（有截圖存證）。
+  **一旦撞上，後續每一筆都會被擋**，必須有人在 Chrome 視窗手動拉滑塊才解除。
+  腳本判定被擋時會存 `out/blocked-<offerId>.png` 與 `.html` 供事後確認。
+- **登入的效果很明顯**（2026-08-19 實測）：
+  匿名時約每 4～5 筆撞一次，跑 51 筆只成功 22 筆；
+  先 `--login` 登入後，整輪只在第一筆撞一次，人工拉過之後連抓 26 筆零阻礙。
+  **所以正確流程是：先 `--login`，開跑後守著第一次驗證，拉完就可以離開。**
+- 人工通過驗證的瞬間頁面會跳轉，輪詢用的 `page.evaluate` 會丟
+  `Execution context was destroyed`。那是**成功**的訊號，必須吞掉重試，不能當成失敗。
+- 判斷有沒有登入要用 `context.cookies()`（`cookie2`/`unb`/`sgcookie` 是 HttpOnly），
+  用 `document.cookie` 會得到假的「未登入」。
+- 驗證頁的判斷條件只看**網址特徵**與**頁面上真的有滑塊元件**。
+  早期版本拿 `document.body.innerText` 前 500 字比對「安全验证」，正常商品頁也會命中而誤判。
+- Playwright 的 `page.waitForFunction(fn, arg, options)`：`timeout` 必須放**第三個**參數。
+  放第二個會被當成 `arg`、靜默套用預設 30 秒——這個坑讓「等人工過驗證」實際只等了 30 秒。
+
+### 第 2 階段的比對規則（已由實測資料確認）
+
+`skuInfoMap` 的 key 在**多規格軸**商品會用 **`&gt;`**（HTML 逸出的 `>`）串接各軸，
+例如 `高2.6米【2根】管粗25mm+收纳袋&gt;黑色`；單軸商品則沒有分隔符。
+料號欄位記的是**第一軸的文字**，所以比對規則是：
+
+1. 反逸出 `&gt;` `&lt;` `&amp;` `&quot;`
+2. 去空白、全形括號轉半形
+3. 用 `>` 切段，拿第一段與料號文字做完全比對
+
+實測 `高2.6米【2根】管粗25mm+收纳袋` → skuId `5819443152404`（¥32.80），唯一命中。
+
+### 抓取工具：`tools/1688-sku-fetch.mjs`
+
+取代 Tampermonkey 腳本（user.js 仍留著，但跨網域、沙箱那些坑 Playwright 都沒有）。
+offer 與短網址清單仍從 `1688-sku-grabber.user.js` 的 `TARGET_OFFERS` /
+`TARGET_SHORT_LINKS` 讀取，維持單一來源。
+
+```bash
+cd tools && npm i            # 只裝 playwright，用本機 Chrome（channel: 'chrome'）
+node 1688-sku-fetch.mjs --from-userscript    # 抓 51 個 offer → out/1688-sku.ndjson
+node 1688-sku-fetch.mjs --resolve-short      # 短網址 → offer id
+node 1688-sku-fetch.mjs --login              # 需要登入才顯示價格時，手動登入一次
+```
+
+- 用獨立 profile `tools/.chrome-1688`，**不碰使用者本人的 Chrome profile**
+  （Chrome 136+ 起也禁止對預設 profile 開遠端偵錯）。
+- 輸出 NDJSON、可續跑（已抓過的 offer 會略過），失敗記到 `out/1688-sku-errors.ndjson`。
+- `out/`、`node_modules/`、`.chrome-1688/` 已在 `tools/.gitignore`。
+
+### 抓取進度（2026-08-19）
+
+51 個 offer 已完成 22 筆、185 個 SKU，存於 `tools/out/1688-sku.ndjson`。
+其餘 29 筆全因滑塊驗證中斷（見上），要有人在旁邊才能續跑：
+
+```bash
+cd tools && node 1688-sku-fetch.mjs --from-userscript --delay 4000   # 已抓過的會自動略過
+```
+
+價格有兩種模型，已統一成 `unitPrice`（買 1 件的單價）+ `priceSource`：
+`sku`（逐 SKU 定價，174 筆）／`range`（階梯價，全品同價，11 筆，價格取自 `skuRangePrices`）。
+目前 185 個 SKU 全部都有價格。`beginNum`（起訂量）是後來才加的欄位，前 12 個 offer 是 null。
+
+### 第 2 階段的實作（2026-08-20 完成）
+
+資料流：`tools/out/*.ndjson` → `tools/1688-sku-upload.mjs` → didibox-api 的 KV
+→「產品建立」分頁按〔🔍 比對 1688 SKU〕。
+
+- **worker-api**：`/api/1688/skus` 的儲存欄位已擴充，多留 `specId`、`unitPrice`、
+  `priceSource`、`canBookCount` 與 offer 層的 `beginNum`、`priceScale`
+  （`specId` 第 3 階段加購物車要用）。另存一份短網址對照表在 KV 的
+  `sku1688:shortlinks`，POST body 用 `shortLinks: { 短網址: offerId }` 更新，
+  GET 全部時一併回傳——料號裡有 87 筆是 lihi2 短網址，前端自己展不開。
+- **上傳**：通行碼走環境變數，不要寫進檔案或指令歷史。
+  ```bash
+  read -s QUOTE_TOKEN && export QUOTE_TOKEN
+  node tools/1688-sku-upload.mjs --by 你的名字      # 加 --dry 可先看要送什麼
+  ```
+- **前端**：規格表在「廠商料號」後面多一欄「1688 SKU」，顯示 skuId 與 ¥單價
+  （階梯價會標註）。比對結果存進 variant 的 `sku1688` 欄位，會跟著商品存檔，
+  **匯出 ERP 的欄位沒有變動**。比對用 `shareToken`，沿用共用商品庫的連線，不另做登入。
+- 比對失敗會逐列列出原因（未收錄、淘寶連結、找不到規格文字、短網址未收錄…），
+  不會靜默略過。非完全相同的比對（開頭相符／包含）skuId 會顯示成橘色提醒人工確認。
+- 實測 8 種情境（多軸、單軸、階梯價、短網址、淘寶、未收錄 offer、找不到規格、空料號）
+  行為都正確；測試腳本的做法見下。
+
+**測試 index.html 的 JS 時的坑**：`let` 宣告的頂層變數（如 `shareToken`）是詞法綁定，
+**不掛在 window 上**，`page.evaluate` 裡要用裸賦值 `shareToken = 'x'` 才蓋得到。
+另外「產品建立」分頁預設隱藏，要先 `switchTab('product')` 才量得到寬度、截得到圖。
+
 ### 下一步
 
-使用者需先執行 v2.2 腳本抓取，取得真實的 SKU 資料後，才能設計第 2 階段的比對邏輯
-（規格文字如何對應到 skuId，需要看實際文字格式才能決定用完全比對、正規化比對或模糊比對）。
+1. 上傳現有資料到 KV，推 main 部署（Pages + Workers Builds）
+2. 抓完剩下 30 個 offer（29 個來自短網址 + `778281484398`），需要有人拉滑塊
+3. 第 3 階段：加入採購車／產生採購單（實際送出訂單與付款維持人工）
 
-若抓取仍失敗，需要在能連上 1688 的環境查看實際頁面結構。
 **雲端 session 連不到 1688（出口政策封鎖），本機 session 才有辦法。**
 
 ## 開發注意事項
