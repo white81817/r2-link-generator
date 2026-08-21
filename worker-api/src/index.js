@@ -39,8 +39,8 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-21-performance-v2',
-  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance'],
+  version: '2026-08-22-cartplan-v1',
+  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
 
@@ -869,6 +869,66 @@ app.post('/api/1688/skus', async (c) => {
 
   if (saved.length) await c.env.CACHE.put(SKU1688_KEY, JSON.stringify(all));
   return c.json({ ok: true, saved: saved.length, shortSaved, offerIds: saved, total: Object.keys(all).length });
+});
+
+// ── 1688 採購計畫 ──────────────────────────────────────────────────────────
+// didibox 上傳採購單、對照出 skuId 之後把計畫放這裡；
+// 使用者在 1688 頁面上的 Tampermonkey 腳本再讀走並呼叫 addCargo。
+// 之所以要繞這一圈：didibox.cc 是跨網域，拿不到 1688 的登入 cookie，
+// 最後那一步只能在 1688 自己的頁面上執行（CORS 白名單已含 detail.1688.com）。
+const CART_PLAN_KEY = 'sku1688:cartplan';
+
+// GET /api/1688/cart-plan   取出目前的採購計畫
+app.get('/api/1688/cart-plan', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+  const raw = await c.env.CACHE.get(CART_PLAN_KEY);
+  return c.json(raw ? JSON.parse(raw) : { items: [], empty: true });
+});
+
+// POST /api/1688/cart-plan  body: { items:[{offerId,specId,quantity,label}], createdBy }
+app.post('/api/1688/cart-plan', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const items = Array.isArray(body.items) ? body.items : null;
+  if (!items || !items.length) return c.json({ error: '缺少 items' }, 400);
+
+  const clean = items
+    .filter((x) => /^\d+$/.test(String(x.offerId)) && x.specId && Number(x.quantity) > 0)
+    .slice(0, 200)
+    .map((x) => ({
+      offerId:  String(x.offerId),
+      specId:   String(x.specId),
+      quantity: Math.max(1, Math.floor(Number(x.quantity))),
+      label:    String(x.label || '').slice(0, 120),
+    }));
+  if (!clean.length) return c.json({ error: '沒有有效的項目' }, 400);
+
+  const plan = {
+    items: clean,
+    createdAt: new Date().toISOString(),
+    createdBy: String(body.createdBy || '').slice(0, 40),
+    consumedAt: null,
+  };
+  await c.env.CACHE.put(CART_PLAN_KEY, JSON.stringify(plan));
+  return c.json({ ok: true, count: clean.length });
+});
+
+// PUT /api/1688/cart-plan   標記已加入（腳本執行完回報，避免重複加入）
+app.put('/api/1688/cart-plan', async (c) => {
+  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+  const raw = await c.env.CACHE.get(CART_PLAN_KEY);
+  if (!raw) return c.json({ error: '沒有採購計畫' }, 404);
+  const plan = JSON.parse(raw);
+  const body = await c.req.json().catch(() => ({}));
+  plan.consumedAt = new Date().toISOString();
+  plan.result = String(body.result || '').slice(0, 500);
+  await c.env.CACHE.put(CART_PLAN_KEY, JSON.stringify(plan));
+  return c.json({ ok: true });
 });
 
 // DELETE /api/1688/skus?id=123456   移除單一 offer（重抓前清資料用）

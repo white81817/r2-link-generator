@@ -263,6 +263,7 @@
     <button class="tab-btn" onclick="switchTab('order')">📋 訂單編號整理</button>
     <button class="tab-btn" onclick="switchTab('quote')">📝 報價單</button>
     <button class="tab-btn" onclick="switchTab('perf')">📊 績效儀表板</button>
+    <button class="tab-btn" onclick="switchTab('po1688')">🛒 1688 採購</button>
   </div>
 
   <!-- ========== 連結產生器 ========== -->
@@ -515,7 +516,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
   <!-- =================== 分頁切換腳本 =================== -->
   <script>
-    const TAB_IDS = ['link', 'label', 'product', 'stock', 'order', 'quote', 'perf'];
+    const TAB_IDS = ['link', 'label', 'product', 'stock', 'order', 'quote', 'perf', 'po1688'];
     function switchTab(tab) {
       TAB_IDS.forEach(id => {
         document.getElementById('tab-' + id).style.display = (id === tab) ? 'block' : 'none';
@@ -2988,6 +2989,178 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.getElementById('sku1688Detail').classList.remove('hidden');
     }
 
+    // ===== 1688 採購單（上傳 → 對照 → 送到 1688）=====
+    // 最後的 addCargo 只能在 1688 自己的頁面上執行（跨網域拿不到登入 cookie），
+    // 所以這裡只負責對照與存計畫，實際加入由 Tampermonkey 腳本完成。
+    let po1688Plan = [];
+
+    function po1688Say(html, cls) {
+      const el = document.getElementById('po1688Status');
+      el.className = 'text-sm mb-3 ' + (cls || 'text-gray-500');
+      el.innerHTML = html;
+      el.classList.remove('hidden');
+    }
+
+    async function loadPo1688(ev) {
+      const file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      po1688Say('讀取檔案…');
+      document.getElementById('po1688Actions').classList.add('hidden');
+
+      let rows;
+      try {
+        // CSV 若當成 array/buffer 讀會被解成 latin1，中文表頭變亂碼、整張表讀不到欄位，
+        // 所以副檔名是 csv 就先用 UTF-8 讀成字串。
+        const isCsv = /\.(csv|txt)$/i.test(file.name);
+        const wb = isCsv
+          ? XLSX.read((await file.text()).replace(/^\uFEFF/, ''), { type: 'string' })
+          : XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      } catch (e) {
+        return po1688Say('✗ 讀不了這個檔案：' + e.message, 'text-red-500');
+      }
+
+      let db;
+      try { db = await load1688Skus(true); }
+      catch (e) { return po1688Say('✗ ' + e.message, 'text-red-500'); }
+
+      const col = (row, names) => {
+        for (const n of names) {
+          for (const k of Object.keys(row)) if (String(k).trim() === n) return String(row[k] ?? '').trim();
+        }
+        return '';
+      };
+      const localDB = getDB();
+      const results = [];
+
+      rows.forEach((r, i) => {
+        const qty = Number(col(r, ['數量', '数量', 'qty', 'quantity']) || 0);
+        const code = col(r, ['商品編號', '商品编号', 'code']);
+        const style = col(r, ['樣式', '样式', 'style']);
+        const size = col(r, ['尺寸', 'size']);
+        let vendorCode = col(r, ['廠商料號', '料號', 'vendorCode']);
+        const line = i + 2;
+        const fail = (why) => results.push({ line, ok: false, why, code, style, size, qty });
+
+        if (!qty || qty <= 0) return;                       // 沒填數量的列直接略過
+        let saved = null;
+
+        if (!vendorCode) {
+          if (!code) return fail('沒有廠商料號，也沒有商品編號');
+          const prod = localDB[code];
+          if (!prod) return fail(`本機商品資料裡沒有 ${code}（在「產品建立」存過的才會有）`);
+          const v = (prod.variants || []).find((x) =>
+            (!style || String(x.style).trim() === style) && (!size || String(x.size).trim() === size));
+          if (!v) return fail(`${code} 找不到規格「${style} / ${size}」`);
+          vendorCode = v.vendorCode || '';
+          if (v.sku1688 && v.sku1688.specId) saved = v.sku1688;
+        }
+
+        if (saved) {
+          return results.push({ line, ok: true, qty, code, style, size,
+            offerId: saved.offerId, specId: saved.specId, skuId: saved.skuId,
+            specText: saved.specText, unitPrice: saved.unitPrice, how: '沿用已存的比對結果' });
+        }
+
+        const { specText, url, offerId, nonAli } = parseVendorCode(vendorCode, db.shortLinks);
+        if (!specText && !url) return fail('料號是空的');
+        if (nonAli) return fail('料號指向淘寶／天貓，不是 1688');
+        if (!offerId) return fail(url ? '網址無法對應到 offer（短網址未收錄？）' : '料號沒有網址');
+        const offer = db.offers[offerId];
+        if (!offer) return fail(`offer ${offerId} 尚未收錄進 SKU 庫`, offerId);
+
+        const m = match1688Sku(specText, offer);
+        if (m && m.ambiguous) {
+          const opts = m.ambiguous.slice(0, 3).map((x) => show1688(x.specText)).join('、');
+          return fail(`規格「${specText}」對到 ${m.ambiguous.length} 筆（${opts}…），料號要補上第二個規格`);
+        }
+        if (!m) return fail(`offer ${offerId} 裡找不到規格「${specText}」`);
+        if (!m.specId) return fail('這筆沒有 specId，請重跑 SKU 上傳');
+
+        results.push({ line, ok: true, qty, code, style, size,
+          offerId, specId: m.specId, skuId: m.skuId, specText: m.specText,
+          unitPrice: m.unitPrice, how: m.how, offerTitle: offer.title || '',
+          beginNum: offer.beginNum ?? null });
+      });
+
+      renderPo1688(results);
+    }
+
+    function renderPo1688(results) {
+      const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const ok = results.filter((r) => r.ok);
+      const bad = results.filter((r) => !r.ok);
+      po1688Plan = ok;
+
+      const total = ok.reduce((a, r) => a + (Number(r.unitPrice) || 0) * r.qty, 0);
+      const rowsHtml = ok.map((r) => {
+        const exact = EXACT_1688.includes(r.how) || r.how === '沿用已存的比對結果';
+        const warn = r.beginNum && r.qty < r.beginNum ? `<span class="text-orange-600"> ⚠ 起訂量 ${r.beginNum}</span>` : '';
+        return `<tr class="${exact ? '' : 'bg-orange-50'}">
+          <td class="border px-2 py-1 text-gray-500">${r.line}</td>
+          <td class="border px-2 py-1">${esc(r.code || '')} ${esc(r.style || '')}${r.size ? '/' + esc(r.size) : ''}</td>
+          <td class="border px-2 py-1">${esc(show1688(r.specText))}</td>
+          <td class="border px-2 py-1 font-mono text-xs">${esc(r.skuId)}</td>
+          <td class="border px-2 py-1 text-right">${r.unitPrice ? '¥' + esc(r.unitPrice) : '—'}</td>
+          <td class="border px-2 py-1 text-right">${r.qty}${warn}</td>
+          <td class="border px-2 py-1 text-right">${r.unitPrice ? '¥' + (Number(r.unitPrice) * r.qty).toFixed(2) : '—'}</td>
+          <td class="border px-2 py-1 text-xs ${exact ? 'text-gray-400' : 'text-orange-600'}">${esc(r.how)}</td>
+        </tr>`;
+      }).join('');
+
+      const badHtml = bad.length ? `
+        <div class="border rounded bg-red-50 p-3 mt-3">
+          <h4 class="text-sm font-semibold text-red-600 mb-1">無法處理的 ${bad.length} 列</h4>
+          ${bad.map((b) => `<div class="text-xs text-red-600">• 第${b.line}列：${esc(b.why)}</div>`).join('')}
+        </div>` : '';
+
+      document.getElementById('po1688Result').innerHTML = ok.length ? `
+        <div class="border rounded bg-white p-3">
+          <table class="w-full text-sm border-collapse">
+            <thead><tr class="bg-gray-100 text-gray-600 text-xs">
+              <th class="border px-2 py-1">列</th><th class="border px-2 py-1 text-left">商品</th>
+              <th class="border px-2 py-1 text-left">1688 規格</th><th class="border px-2 py-1 text-left">skuId</th>
+              <th class="border px-2 py-1 text-right">單價</th><th class="border px-2 py-1 text-right">數量</th>
+              <th class="border px-2 py-1 text-right">小計</th><th class="border px-2 py-1 text-left">比對</th>
+            </tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <div class="text-right text-sm font-semibold mt-2">
+            合計 ${ok.length} 個規格、¥${total.toFixed(2)}
+            <span class="font-normal text-gray-400">（約 NT$${Math.round(total * 4.55).toLocaleString()}，匯率 4.55）</span>
+          </div>
+        </div>${badHtml}` : badHtml || '<p class="text-sm text-gray-400">沒有可處理的資料</p>';
+
+      po1688Say(`對照完成：${ok.length} 列可加入、${bad.length} 列有問題`,
+        bad.length ? 'text-orange-600' : 'text-green-600');
+      document.getElementById('po1688Actions').classList.toggle('hidden', !ok.length);
+    }
+
+    async function sendPo1688() {
+      if (!po1688Plan.length) return;
+      const btn = document.getElementById('po1688SendBtn');
+      const out = document.getElementById('po1688SendResult');
+      btn.disabled = true;
+      out.textContent = '送出中…';
+
+      const items = po1688Plan.map((r) => ({
+        offerId: r.offerId, specId: r.specId, quantity: r.qty,
+        label: `${r.code || ''} ${show1688(r.specText)}`.trim().slice(0, 120),
+      }));
+      const { ok, status, data } = await shareApi('/api/1688/cart-plan', {
+        method: 'POST',
+        body: JSON.stringify({ items, createdBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+      });
+      btn.disabled = false;
+      if (!ok) { out.innerHTML = `<span class="text-red-500">✗ 送出失敗（${data.error || status}）</span>`; return; }
+
+      const firstOffer = po1688Plan[0].offerId;
+      out.innerHTML = `<span class="text-green-600">✓ 已送出 ${data.count} 個規格。</span>
+        接著開 <a class="underline text-blue-500" target="_blank"
+        href="https://detail.1688.com/offer/${firstOffer}.html">1688 商品頁</a>，
+        Tampermonkey 腳本會出現「加入進貨車（${data.count}）」按鈕，按下去就完成。`;
+    }
+
     // ===== 儲存資料庫 =====
     function getDB() {
       try { return JSON.parse(localStorage.getItem(PRODUCT_DB_KEY) || '{}'); }
@@ -5244,6 +5417,36 @@ ${co.bank?`<div class="bank">
   <!-- =================== 績效儀表板 Tab =================== -->
   <!-- 資料存於 didibox-api 的 KV（key: perf:data），由自動化腳本 POST 進去。
        通行碼分兩種：主管密碼看全部；各 PM 密碼只看得到自己（後端就過濾好了）。 -->
+  <!-- ========== 1688 採購 ========== -->
+  <div id="tab-po1688" style="display:none" class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto p-6">
+      <h2 class="text-xl font-semibold text-gray-700 mb-1">🛒 1688 採購單</h2>
+      <p class="text-sm text-gray-500 mb-4">
+        上傳採購單 → 這裡對照出 skuId 與價格 → 送到 1688 → 在 1688 商品頁按一下加入進貨車。
+        <span class="text-gray-400">下單與付款一律人工，這裡只負責把東西放進進貨車。</span>
+      </p>
+
+      <div class="bg-white border rounded p-4 mb-4">
+        <label class="block text-gray-700 text-sm font-bold mb-2">採購單（xlsx 或 csv）</label>
+        <input type="file" id="po1688File" accept=".xlsx,.xls,.csv" class="block text-sm" onchange="loadPo1688(event)">
+        <p class="text-xs text-gray-400 mt-2">
+          欄位：<code>數量</code> 必填；商品用 <code>廠商料號</code>（規格文字&lt;br&gt;網址）指定，
+          或用 <code>商品編號</code>＋<code>樣式</code>＋<code>尺寸</code> 從本機商品資料帶出。
+        </p>
+      </div>
+
+      <div id="po1688Status" class="text-sm mb-3 hidden"></div>
+      <div id="po1688Result" class="mb-4"></div>
+
+      <div id="po1688Actions" class="hidden bg-white border rounded p-4">
+        <button onclick="sendPo1688()" id="po1688SendBtn"
+          class="bg-orange-500 text-white px-5 py-2 rounded text-sm hover:bg-orange-600">送到 1688 →</button>
+        <span class="text-xs text-gray-400 ml-3">送出後到 1688 商品頁，用 Tampermonkey 腳本一鍵加入進貨車</span>
+        <div id="po1688SendResult" class="text-sm mt-3"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="tab-perf" style="display:none" class="bg-gray-50 min-h-screen">
 
     <!-- Lock Screen -->
