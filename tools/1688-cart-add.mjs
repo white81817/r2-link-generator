@@ -1,0 +1,214 @@
+#!/usr/bin/env node
+/**
+ * 採購單（Excel/CSV）→ 1688 進貨車。
+ *
+ * 資料鏈路：
+ *   採購單的「商品編號＋樣式＋尺寸＋數量」
+ *     → 共用商品庫查出該規格的廠商料號
+ *     → 料號的規格文字比對 1688 SKU 庫，得到 offerId + specId
+ *     → 呼叫 MtopPurchaseService.addCargo 加入進貨車
+ *
+ * addCargo 的 goodsParams 是陣列，整張單一次請求就能加完。簽章交給頁面自己的
+ * window.lib.mtop.request 處理，不必自行實作 mtop sign。
+ *
+ * **實際送出訂單與付款一律人工**：本工具只把東西放進進貨車。
+ *
+ * 用法：
+ *   read -s QUOTE_TOKEN && export QUOTE_TOKEN
+ *   node tools/1688-cart-add.mjs --file 採購單.xlsx           # 預設只試算，不動購物車
+ *   node tools/1688-cart-add.mjs --file 採購單.xlsx --add     # 確認後真的加入
+ *
+ * 採購單欄位（有表頭，名稱可用中文或英文）：
+ *   商品編號 code ／ 樣式 style ／ 尺寸 size ／ 數量 qty
+ */
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import * as XLSX from 'xlsx';
+import { chromium } from 'playwright';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const argv = process.argv.slice(2);
+const flag = (n, d) => { const i = argv.indexOf(n); return i === -1 ? d : argv[i + 1]; };
+const has = (n) => argv.includes(n);
+
+const API   = flag('--api', 'https://didibox-api.adam-061.workers.dev');
+const FILE  = flag('--file', '');
+const DO_ADD = has('--add');
+const TOKEN = process.env.QUOTE_TOKEN || '';
+const PROFILE = path.join(HERE, '.chrome-1688');
+
+if (!FILE) { console.error('需要 --file <採購單.xlsx 或 .csv>'); process.exit(1); }
+if (!TOKEN) { console.error('缺少通行碼。請先執行：read -s QUOTE_TOKEN && export QUOTE_TOKEN'); process.exit(1); }
+
+// ── 讀採購單 ────────────────────────────────────────────────────────────────
+const pick = (row, names) => {
+  for (const n of names) {
+    for (const k of Object.keys(row)) {
+      if (String(k).trim().toLowerCase() === n.toLowerCase()) return row[k];
+    }
+  }
+  return undefined;
+};
+
+const wb = XLSX.readFile(path.resolve(FILE));
+const sheet = wb.Sheets[wb.SheetNames[0]];
+const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+const orders = rawRows.map((r, i) => ({
+  line:  i + 2,
+  code:  String(pick(r, ['商品編號', '商品编号', 'code']) ?? '').trim(),
+  style: String(pick(r, ['樣式', '样式', 'style']) ?? '').trim(),
+  size:  String(pick(r, ['尺寸', 'size']) ?? '').trim(),
+  qty:   Number(pick(r, ['數量', '数量', 'qty', 'quantity']) ?? 0),
+})).filter((o) => o.code && o.qty > 0);
+
+if (!orders.length) { console.error('採購單裡沒有有效資料（需要 商品編號 與 數量）'); process.exit(1); }
+console.log(`採購單讀入 ${orders.length} 列`);
+
+// ── 取共用商品庫與 1688 SKU 庫 ──────────────────────────────────────────────
+const api = async (p) => {
+  const res = await fetch(API + p, { headers: { 'X-Quote-Token': TOKEN } });
+  if (!res.ok) throw new Error(`${p} → ${res.status}`);
+  return res.json();
+};
+
+const skuDb = await api('/api/1688/skus');
+console.log(`1688 SKU 庫：${skuDb.count} 個 offer、${Object.keys(skuDb.shortLinks || {}).length} 筆短網址`);
+
+const productCache = new Map();
+async function getProduct(code) {
+  if (!productCache.has(code)) {
+    productCache.set(code, await api(`/api/products/${encodeURIComponent(code)}`).catch(() => null));
+  }
+  return productCache.get(code);
+}
+
+// ── 比對規則（與前端 index.html 同一套，改動時兩邊要一起改）────────────────
+const norm = (t) => String(t || '')
+  .replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&quot;/g, '"')
+  .replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+  .replace(/[（）]/g, (m) => (m === '（' ? '(' : ')'))
+  .replace(/\s+/g, '').toLowerCase();
+const firstAxis = (t) => norm(t).split('>')[0];
+
+function parseVendorCode(raw, shortLinks) {
+  const text = String(raw || '').replace(/<br\s*\/?>/gi, '\n');
+  const url = (text.match(/https?:\/\/[^\s"'<>]+/) || [''])[0];
+  const specText = text.replace(url, '').replace(/\n/g, ' ').trim();
+  const direct = url.match(/\/offer\/(\d+)\.html/) || url.match(/[?&]offerId=(\d+)/);
+  const offerId = direct ? direct[1]
+    : (url && shortLinks ? (shortLinks[url] || shortLinks[url.split('?')[0]] || '') : '');
+  return { specText, url, offerId, nonAli: /taobao\.com|tmall\.com/.test(url) };
+}
+
+function matchSku(specText, offer) {
+  const target = norm(specText);
+  if (!target || !offer?.skus) return null;
+  const one = (list, how) => (list.length === 1 ? { ...list[0], how } : null);
+  return one(offer.skus.filter((s) => firstAxis(s.specText) === target), '完全相同')
+    || one(offer.skus.filter((s) => norm(s.specText) === target), '整串相同')
+    || one(offer.skus.filter((s) => firstAxis(s.specText).startsWith(target)), '開頭相符')
+    || one(offer.skus.filter((s) => norm(s.specText).includes(target)), '包含');
+}
+
+// ── 逐列解析成 offerId + specId ─────────────────────────────────────────────
+const plan = [];
+const problems = [];
+for (const o of orders) {
+  const prod = await getProduct(o.code);
+  if (!prod) { problems.push(`第${o.line}列：共用商品庫沒有商品 ${o.code}`); continue; }
+
+  const variants = prod.variants || (prod.data && prod.data.variants) || [];
+  const v = variants.find((x) =>
+    (!o.style || String(x.style).trim() === o.style) &&
+    (!o.size  || String(x.size).trim()  === o.size));
+  if (!v) { problems.push(`第${o.line}列：${o.code} 找不到規格「${o.style} / ${o.size}」`); continue; }
+
+  // 商品存檔時若已比對過就直接用，否則現場用料號比對一次
+  let rec = v.sku1688 && v.sku1688.specId ? v.sku1688 : null;
+  let how = rec ? '沿用商品存檔的比對結果' : '';
+  if (!rec) {
+    const { specText, offerId, nonAli } = parseVendorCode(v.vendorCode, skuDb.shortLinks);
+    if (nonAli)   { problems.push(`第${o.line}列：${o.code} 的料號指向淘寶／天貓`); continue; }
+    if (!offerId) { problems.push(`第${o.line}列：${o.code} 的料號解不出 offer`); continue; }
+    const offer = skuDb.offers[offerId];
+    if (!offer)   { problems.push(`第${o.line}列：offer ${offerId} 尚未收錄進 SKU 庫`); continue; }
+    const m = matchSku(specText, offer);
+    if (!m)       { problems.push(`第${o.line}列：offer ${offerId} 找不到規格「${specText}」`); continue; }
+    rec = { offerId, skuId: m.skuId, specId: m.specId, specText: m.specText, unitPrice: m.unitPrice };
+    how = m.how;
+  }
+  if (!rec.specId) { problems.push(`第${o.line}列：${o.code} 的比對結果沒有 specId，請重跑上傳與比對`); continue; }
+
+  const offer = skuDb.offers[rec.offerId] || {};
+  plan.push({
+    ...o, ...rec, how,
+    offerTitle: offer.title || '',
+    beginNum: offer.beginNum ?? null,
+    subtotal: rec.unitPrice ? Number(rec.unitPrice) * o.qty : null,
+  });
+}
+
+// ── 顯示計畫 ────────────────────────────────────────────────────────────────
+console.log('\n=== 採購計畫 ===');
+for (const p of plan) {
+  const warn = p.beginNum && p.qty < p.beginNum ? `  ⚠ 起訂量 ${p.beginNum}` : '';
+  console.log(`  ${p.code} ${p.style}/${p.size} ×${p.qty}  →  offer ${p.offerId} sku ${p.skuId}`);
+  console.log(`      ${p.specText.replace(/&gt;/g, ' > ')} ｜ ¥${p.unitPrice ?? '—'} ｜ 小計 ¥${p.subtotal?.toFixed(2) ?? '—'} ｜ ${p.how}${warn}`);
+}
+const total = plan.reduce((a, p) => a + (p.subtotal || 0), 0);
+console.log(`\n合計 ${plan.length} 個規格、¥${total.toFixed(2)}（約 NT$${Math.round(total * 4.55).toLocaleString()}，匯率 4.55）`);
+if (problems.length) {
+  console.log(`\n=== 無法處理的 ${problems.length} 列 ===`);
+  problems.forEach((p) => console.log('  • ' + p));
+}
+if (!plan.length) process.exit(1);
+
+if (!DO_ADD) {
+  console.log('\n這是試算，沒有動你的進貨車。確認無誤後加上 --add 實際加入。');
+  process.exit(0);
+}
+
+// ── 實際加入進貨車 ──────────────────────────────────────────────────────────
+// 用頁面自己的 window.lib.mtop.request，簽章與 cookie 都交給網站處理。
+const goodsParams = plan.map((p) => ({
+  specId: p.specId,
+  offerId: Number(p.offerId),
+  quantity: p.qty,
+  flow: 'general',
+  ext: { sceneCode: '' },
+}));
+
+const ctx = await chromium.launchPersistentContext(PROFILE, {
+  channel: 'chrome', headless: false, viewport: null, locale: 'zh-CN',
+  args: ['--disable-blink-features=AutomationControlled'],
+});
+const page = ctx.pages()[0] || await ctx.newPage();
+await page.goto(`https://detail.1688.com/offer/${plan[0].offerId}.html`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForFunction(() => !!window.lib?.mtop?.request, undefined, { timeout: 30000 })
+  .catch(() => { throw new Error('頁面上找不到 lib.mtop，可能被驗證頁擋住，請先在視窗內通過驗證'); });
+
+const result = await page.evaluate(async (goods) => {
+  try {
+    const res = await window.lib.mtop.request({
+      api: 'com.alibaba.china.buy.service.purchase.MtopPurchaseService.addCargo',
+      v: '1.0',
+      type: 'POST',
+      dataType: 'originaljson',
+      data: { client: 'pc', goodsParams: JSON.stringify(goods), purchaseType: '' },
+    });
+    return { ok: true, res };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e), raw: e };
+  }
+}, goodsParams);
+
+console.log('\n=== addCargo 回應 ===');
+console.log(JSON.stringify(result, null, 2).slice(0, 1500));
+const ret = result?.res?.ret?.[0] || '';
+if (/SUCCESS/i.test(ret)) {
+  console.log(`\n✓ 已加入進貨車：${plan.length} 個規格。請到 https://cart.1688.com 核對後自行下單付款。`);
+} else {
+  console.log('\n✗ 加入失敗，請看上面的回應內容。');
+}
+await ctx.close();

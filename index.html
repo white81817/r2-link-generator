@@ -2266,6 +2266,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
         </div>
         <div id="sku1688Status" class="text-xs text-gray-400 mb-2 hidden"></div>
+        <div id="sku1688Detail" class="hidden mb-3"></div>
         <p class="text-xs text-gray-400 mb-3">
           <span class="text-blue-400">🔗 同步：批價、料號、重量、長寬高、安全庫存、有效天數、交貨天數、銷售模式</span>
         </p>
@@ -2735,6 +2736,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         .toLowerCase();
     }
     const firstAxis1688 = (text) => norm1688(text).split('>')[0];
+    // 顯示用：把 &gt; 之類還原成可讀的字元（KV 存的是 1688 原樣的字串）
+    const show1688 = (text) => String(text || '')
+      .replace(/&gt;/g, ' > ').replace(/&lt;/g, '<')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 
     // 料號 → { specText, offerId }；短網址靠 KV 的對照表展開
     function parseVendorCode(raw, shortLinks) {
@@ -2776,7 +2781,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     async function load1688Skus(force) {
       if (sku1688DB && !force) return sku1688DB;
-      if (!shareToken) throw new Error('請先在下方「共用商品庫」輸入通行碼連線');
+      if (!shareToken) throw new Error('請先在頁面最上方的「☁️ 共用商品庫」輸入通行碼連線');
       const { ok, status, data } = await shareApi('/api/1688/skus');
       if (!ok) throw new Error(status === 401 ? '通行碼未授權' : (data.error || `讀取失敗（${status}）`));
       sku1688DB = { offers: data.offers || {}, shortLinks: data.shortLinks || {} };
@@ -2798,6 +2803,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       const rows = Array.from(document.querySelectorAll('#variantRows tr'));
       const miss = [];
+      const details = [];
       let hit = 0;
       rows.forEach((tr, i) => {
         const out = tr.querySelector('.v-sku1688');
@@ -2811,6 +2817,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           out.title = why;
           priceEl.textContent = '';
           miss.push(`第${i + 1}列：${why}`);
+          details.push({ row: i + 1, ok: false, want: specText, why });
         };
 
         if (!specText && !url) return fail('料號是空的');
@@ -2823,26 +2830,87 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const m = match1688Sku(specText, offer);
         if (!m) return fail(`offer ${offerId} 裡找不到規格「${specText}」`);
 
+        // 舊版 worker 沒存 unitPrice，退回讀 price，避免顯示成「—」
+        const unitPrice = m.unitPrice ?? m.price ?? null;
         const rec = {
           offerId, skuId: m.skuId, specId: m.specId,
-          specText: m.specText, unitPrice: m.unitPrice,
+          specText: m.specText, unitPrice,
           priceSource: m.priceSource, matchedBy: m.how,
+          offerTitle: offer.title || '', beginNum: offer.beginNum ?? null,
         };
         out.value = m.skuId;
         out.dataset.sku = JSON.stringify(rec);
-        out.title = `${m.specText}\n¥${m.unitPrice ?? '—'}（${m.priceSource === 'range' ? '階梯價' : '單一價'}）\n比對方式：${m.how}`;
-        priceEl.textContent = m.unitPrice ? `¥${m.unitPrice}${m.priceSource === 'range' ? '(階梯)' : ''}` : '';
+        out.title = `${show1688(m.specText)}\n¥${unitPrice ?? '—'}（${m.priceSource === 'range' ? '階梯價' : '單一價'}）\n比對方式：${m.how}`;
+        priceEl.textContent = unitPrice ? `¥${unitPrice}${m.priceSource === 'range' ? '(階梯)' : ''}` : '';
         out.classList.toggle('text-orange-600', m.how !== '第一軸完全相同');
+        details.push({
+          row: i + 1, ok: true, want: specText, got: m.specText,
+          skuId: m.skuId, unitPrice, priceSource: m.priceSource,
+          how: m.how, offerId, offerTitle: offer.title || '',
+        });
         hit++;
       });
 
       const total = rows.length;
       const detail = miss.length ? '<br>' + miss.map(x => '• ' + x).join('<br>') : '';
       setSku1688Status(
-        `比對完成：${hit}/${total} 列對到 SKU（SKU 庫收錄 ${Object.keys(db.offers).length} 個 offer）${detail}`,
+        `比對完成：${hit}/${total} 列對到 SKU（SKU 庫收錄 ${Object.keys(db.offers).length} 個 offer）`
+        + ` <button onclick="toggle1688Detail()" class="underline text-blue-500 ml-1">明細</button>${detail}`,
         miss.length ? 'text-orange-600' : 'text-green-600',
       );
+      render1688Detail(details);
       btn.disabled = false;
+    }
+
+    function toggle1688Detail() {
+      document.getElementById('sku1688Detail').classList.toggle('hidden');
+    }
+
+    // 比對明細：把「料號寫的規格文字」與「1688 上實際命中的規格文字」並排，
+    // 方便一次看完有沒有帶錯，不必逐格 hover。
+    function render1688Detail(details) {
+      const esc = (t) => String(t == null ? '' : t)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const rows = details.map((d) => {
+        if (!d.ok) {
+          return `<tr class="bg-red-50">
+            <td class="border px-2 py-1 text-center text-gray-500">${d.row}</td>
+            <td class="border px-2 py-1">${esc(d.want) || '<span class="text-gray-400">（空）</span>'}</td>
+            <td class="border px-2 py-1 text-red-500" colspan="4">✗ ${esc(d.why)}</td>
+          </tr>`;
+        }
+        const exact = d.how === '第一軸完全相同';
+        const same  = norm1688(d.want) === firstAxis1688(d.got);
+        return `<tr class="${exact ? '' : 'bg-orange-50'}">
+          <td class="border px-2 py-1 text-center text-gray-500">${d.row}</td>
+          <td class="border px-2 py-1">${esc(d.want)}</td>
+          <td class="border px-2 py-1">${same ? '<span class="text-green-600">＝</span>' : '<span class="text-orange-600 font-bold">≠ 請確認</span>'}</td>
+          <td class="border px-2 py-1">${esc(show1688(d.got))}</td>
+          <td class="border px-2 py-1 font-mono text-xs">${esc(d.skuId)}</td>
+          <td class="border px-2 py-1 text-right whitespace-nowrap">${d.unitPrice ? '¥' + esc(d.unitPrice) + (d.priceSource === 'range' ? '<span class="text-gray-400 text-xs">(階梯)</span>' : '') : '<span class="text-gray-400">—</span>'}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('sku1688Detail').innerHTML = `
+        <div class="border rounded bg-white p-3">
+          <div class="flex justify-between items-center mb-2">
+            <h4 class="text-sm font-semibold text-gray-600">1688 比對明細</h4>
+            <button onclick="toggle1688Detail()" class="text-xs text-gray-400 hover:text-gray-600">收起</button>
+          </div>
+          <p class="text-xs text-gray-400 mb-2">「＝」表示料號的規格文字與 1688 上的規格文字逐字相同；「≠ 請確認」表示是開頭相符或包含，需要人工看一眼。</p>
+          <table class="w-full text-sm border-collapse">
+            <thead><tr class="bg-gray-100 text-gray-600 text-xs">
+              <th class="border px-2 py-1">列</th>
+              <th class="border px-2 py-1 text-left">料號寫的規格</th>
+              <th class="border px-2 py-1">比對</th>
+              <th class="border px-2 py-1 text-left">1688 上的規格</th>
+              <th class="border px-2 py-1 text-left">skuId</th>
+              <th class="border px-2 py-1 text-right">單價</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      document.getElementById('sku1688Detail').classList.remove('hidden');
     }
 
     // ===== 儲存資料庫 =====

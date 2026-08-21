@@ -9,6 +9,7 @@
     "login": "node 1688-sku-fetch.mjs --login"
   },
   "dependencies": {
-    "playwright": "^1.62.1"
+    "playwright": "^1.62.1",
+    "xlsx": "^0.18.5"
   }
 }

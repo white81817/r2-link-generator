@@ -192,11 +192,43 @@ cd tools && node 1688-sku-fetch.mjs --from-userscript --delay 4000   # 已抓過
 **不掛在 window 上**，`page.evaluate` 裡要用裸賦值 `shareToken = 'x'` 才蓋得到。
 另外「產品建立」分頁預設隱藏，要先 `switchTab('product')` 才量得到寬度、截得到圖。
 
+### 第 3 階段：加入進貨車（2026-08-22）
+
+**加入進貨車打的是 MTOP**，已用 `tools/1688-cart-capture.mjs` 側錄真實請求確認：
+
+```
+POST https://h5api.m.1688.com/h5/com.alibaba.china.buy.service.purchase.MtopPurchaseService.addCargo/1.0/
+data.goodsParams = [{ specId, offerId, quantity, flow:'general', ext:{sceneCode:''} }]
+回應 ret = ["SUCCESS::调用成功"]
+```
+
+- **goodsParams 是陣列**，整張採購單一次請求就能加完，不必逐頁操作。
+- 需要的欄位只有 `specId` + `offerId` + `quantity`，全是第 2 階段已有的資料。
+  實測錄到的 specId 與我們 KV 裡存的完全一致。
+- `selectedTradeServices` 只在該 offer 有定制服務（如「包装定制」）時出現，一般可省略。
+- **簽章不必自己實作**：頁面上有 `window.lib.mtop.request`，在 page.evaluate 裡呼叫它，
+  sign 與 cookie 都由網站自己處理。自行實作 mtop sign（`_m_h5_tk` + md5）是沒必要的彎路。
+- 側錄腳本的過濾條件要寫 `/addCargo|MtopPurchaseService/`，
+  **不能只寫 `/purchase/`**——會被 `repurchase.access`（再次購買）誤中而提早收工。
+
+工具：`tools/1688-cart-add.mjs`，採購單（xlsx/csv）→ 共用商品庫查料號 → 比對 SKU → 加入進貨車。
+**預設是試算，要加 `--add` 才會真的動進貨車；送出訂單與付款一律人工。**
+
+```bash
+read -s QUOTE_TOKEN && export QUOTE_TOKEN
+node tools/1688-cart-add.mjs --file 採購單.xlsx          # 試算
+node tools/1688-cart-add.mjs --file 採購單.xlsx --add    # 實際加入
+```
+
+採購單欄位：`商品編號`、`樣式`、`尺寸`、`數量`（範本見 `tools/out/採購單範本.csv`）。
+比對規則與 `index.html` 是同一套，**改動時兩邊要一起改**。
+
 ### 下一步
 
-1. 上傳現有資料到 KV，推 main 部署（Pages + Workers Builds）
-2. 抓完剩下 30 個 offer（29 個來自短網址 + `778281484398`），需要有人拉滑塊
-3. 第 3 階段：加入採購車／產生採購單（實際送出訂單與付款維持人工）
+1. 抓完剩下 30 個 offer（29 個來自短網址 + `778281484398`），需要有人拉滑塊
+2. `1688-cart-add.mjs --add` 尚未實際跑過（只驗證了 API 形狀與 lib.mtop 存在），
+   第一次用先試算，再拿一筆便宜的品項實跑
+3. 可考慮的加值：用 ¥單價 × 4.55 對照「廠商批價」，標出成本已過期的商品
 
 **雲端 session 連不到 1688（出口政策封鎖），本機 session 才有辦法。**
 
