@@ -257,9 +257,33 @@ node tools/1688-cart-add.mjs --file 採購單.xlsx --add    # 實際加入
 不必先把商品放進共用商品庫——實際上商品多半只存在瀏覽器的 localStorage，
 共用商品庫是空的，一開始假設要查那裡是錯的。
 
+### 免終端機的採購流程（2026-08-22）
+
+**為什麼要拆成兩段**：didibox.cc 是跨網域，瀏覽器不會把 1688 的登入 cookie 送到
+`h5api.m.1688.com`，CORS 也不放行，所以 addCargo **不可能**從 didibox 直接打。
+
+```
+didibox「🛒 1688 採購」分頁          1688 商品頁（Tampermonkey）
+上傳採購單 → 對照 skuId → 試算  ──→  KV: sku1688:cartplan  ──→  讀取計畫 → lib.mtop addCargo
+```
+
+- worker：`GET/POST/PUT /api/1688/cart-plan`，KV 鍵 `sku1688:cartplan`。
+  PUT 用來標記已加入，避免重複。
+- 腳本：`tools/1688-cart-adder.user.js`，只跑在 `detail.1688.com/offer/*`。
+  用 `unsafeWindow.lib.mtop`（沙箱看不到頁面變數）與 `GM_xmlhttpRequest`（跨網域）。
+  通行碼存在 `GM_setValue`，401 時自動清掉重問。
+- 前端採購單可用 `廠商料號` 指定，或 `商品編號＋樣式＋尺寸` 從 **localStorage 的
+  `productDB_v2`** 帶出——商品多半只存在本機，共用商品庫是空的。
+
+**CSV 編碼的坑（Node 與瀏覽器都中過）**：`XLSX.read(buffer/arrayBuffer)` 讀 CSV 會
+當成 latin1，中文表頭變亂碼、整張表讀不到任何欄位。副檔名是 csv 就要先用 UTF-8
+讀成字串再 `XLSX.read(str, {type:'string'})`。xlsx 走 buffer 沒問題。
+
 ### 下一步
 
-1. 抓完剩下 30 個 offer（29 個來自短網址 + `778281484398`），需要有人拉滑塊
+1. ~~抓完剩下 30 個 offer~~ 已完成：目前 **78 個 offer、783 個 SKU**，
+   價格與 specId 都 100% 完整。只有 2 個抓不到，是**商品已下架**
+   （`665866303228`、`580557461880`），那兩筆料號要換供應商連結。
 2. 若要「完全不用終端機」：didibox 上傳採購單 → 存計畫到 KV → Tampermonkey 腳本在
    1688 頁面上一鍵加入。可行關鍵是 worker 的 CORS 白名單已含 `https://detail.1688.com`；
    最後那步無法在 didibox.cc 直接做，因為跨網域拿不到 1688 的登入 cookie。
