@@ -39,8 +39,8 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-20-1688-skudb-v2',
-  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb'],
+  version: '2026-08-21-performance-v1',
+  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance'],
   timestamp: new Date().toISOString(),
 }));
 
@@ -510,6 +510,17 @@ function validateQuoteToken(token, env) {
   return null;
 }
 
+// 產品建立（共用商品庫 / 1688 SKU 查詢）用的驗證：
+// 除了報價單那兩組通行碼，四位 PM 的個人通行碼（PW_*）也可通行，權限視為一般使用者。
+// 報價單本身仍只認 QUOTE_PASSWORD / QUOTE_ADMIN_PASSWORD，不受影響。
+function validateProductToken(token, env) {
+  const quoteRole = validateQuoteToken(token, env);
+  if (quoteRole) return quoteRole;
+  const perf = validatePerfToken(token, env);   // PW_PETER / PW_YUKI / PW_KAI / PW_PATTY
+  if (perf) return perf.role === 'owner' ? 'admin' : 'user';
+  return null;
+}
+
 // POST /api/quotes/auth  body: { password }
 app.post('/api/quotes/auth', async (c) => {
   let body;
@@ -610,7 +621,7 @@ app.delete('/api/quotes/:id', async (c) => {
 
 // GET /api/products — 取得商品摘要清單
 app.get('/api/products', async (c) => {
-  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
   if (!role) return c.json({ error: '未授權' }, 401);
 
   const raw = await c.env.CACHE.get('product:list');
@@ -619,7 +630,7 @@ app.get('/api/products', async (c) => {
 
 // GET /api/products/:code — 取得單一商品完整資料
 app.get('/api/products/:code', async (c) => {
-  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
   if (!role) return c.json({ error: '未授權' }, 401);
 
   const raw = await c.env.CACHE.get(`product:${c.req.param('code')}`);
@@ -631,7 +642,7 @@ app.get('/api/products/:code', async (c) => {
 // body: { data, baseUpdatedAt, updatedBy, force }
 // baseUpdatedAt 為此次編輯所根據的版本時間；與伺服器現況不符即視為衝突，回 409。
 app.put('/api/products/:code', async (c) => {
-  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
   if (!role) return c.json({ error: '未授權' }, 401);
 
   const code = c.req.param('code');
@@ -677,7 +688,7 @@ app.put('/api/products/:code', async (c) => {
 
 // DELETE /api/products/:code  (一般通行碼即可刪除)
 app.delete('/api/products/:code', async (c) => {
-  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
   if (!role) return c.json({ error: '未授權' }, 401);
 
   const code = c.req.param('code');
@@ -695,7 +706,7 @@ app.delete('/api/products/:code', async (c) => {
 // 用途：確認 Cloudflare 伺服器端能否讀到 1688 商品頁，並嘗試解析 SKU。
 // 1688 有反爬機制，抓不到屬預期結果之一，回傳診斷資訊供判斷該走哪條路。
 app.get('/api/1688/offer', async (c) => {
-  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
   if (!role) return c.json({ error: '未授權' }, 401);
 
   const id = (c.req.query('id') || '').trim();
@@ -785,7 +796,7 @@ async function readSku1688Short(env) {
 // GET /api/1688/skus            取得全部
 // GET /api/1688/skus?id=123456  取得單一 offer
 app.get('/api/1688/skus', async (c) => {
-  const role = validateQuoteToken(c.req.header('X-Quote-Token'), c.env);
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
   if (!role) return c.json({ error: '未授權' }, 401);
 
   const all = await readSku1688(c.env);
@@ -872,6 +883,101 @@ app.delete('/api/1688/skus', async (c) => {
   delete all[id];
   await c.env.CACHE.put(SKU1688_KEY, JSON.stringify(all));
   return c.json({ ok: true, total: Object.keys(all).length });
+});
+
+// ── 績效儀表板 ────────────────────────────────────────────────────────────────
+// 資料為機密（各 PM 業績/毛利/庫存），一律需通行碼，且 PM 只看得到自己的。
+// Cloudflare secrets：
+//   QUOTE_ADMIN_PASSWORD → 老闆：看全部 + 唯一可寫入（沿用既有那組）
+//   PW_PETER             → 主管(Peter)：看全部，不可寫入
+//   PW_YUKI / PW_KAI / PW_PATTY → 各 PM：只看得到自己
+const PERF_KEY = 'perf:data';
+const PERF_PMS = ['Peter', 'Yuki', 'Kai', 'Patty'];
+
+// 回傳 { role:'owner' } / { role:'admin', pm } / { role:'pm', pm } / null
+// owner 與 admin 都看全部；只有 owner 能寫入。
+function validatePerfToken(token, env) {
+  if (!token) return null;
+  if (env.QUOTE_ADMIN_PASSWORD && token === env.QUOTE_ADMIN_PASSWORD) return { role: 'owner' };
+  if (env.PW_PETER && token === env.PW_PETER) return { role: 'admin', pm: 'Peter' };
+  for (const pm of ['Yuki', 'Kai', 'Patty']) {
+    const pw = env['PW_' + pm.toUpperCase()];
+    if (pw && token === pw) return { role: 'pm', pm };
+  }
+  return null;
+}
+
+const perfCanSeeAll = auth => auth.role === 'owner' || auth.role === 'admin';
+
+async function readPerf(env) {
+  const raw = await env.CACHE.get(PERF_KEY);
+  if (!raw) return { months: {} };
+  try { const v = JSON.parse(raw); return v && v.months ? v : { months: {} }; }
+  catch { return { months: {} }; }
+}
+
+// POST /api/performance/auth  body: { password }
+app.post('/api/performance/auth', async (c) => {
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const auth = validatePerfToken(body.password, c.env);
+  if (!auth) return c.json({ error: '通行碼錯誤' }, 401);
+  return c.json(auth);
+});
+
+// GET /api/performance  → 依角色回傳：admin 全部、pm 只有自己
+app.get('/api/performance', async (c) => {
+  const auth = validatePerfToken(c.req.header('X-Perf-Token'), c.env);
+  if (!auth) return c.json({ error: '未授權' }, 401);
+
+  const all = await readPerf(c.env);
+  if (perfCanSeeAll(auth)) return c.json({ ...auth, ...all });
+
+  // PM：只保留自己的欄位
+  const months = {};
+  for (const [m, rows] of Object.entries(all.months)) {
+    if (rows && rows[auth.pm]) months[m] = { [auth.pm]: rows[auth.pm] };
+  }
+  return c.json({ ...auth, generated: all.generated, age_th: all.age_th, months });
+});
+
+// POST /api/performance  body: { generated?, age_th?, months:{ '2026-07': { Peter:{...}, ... } } }
+// 以月份為單位合併：同月覆蓋、新月追加（保留歷史）。僅老闆通行碼可寫入。
+app.post('/api/performance', async (c) => {
+  const auth = validatePerfToken(c.req.header('X-Perf-Token'), c.env);
+  if (!auth || auth.role !== 'owner') return c.json({ error: '未授權（需老闆通行碼）' }, 401);
+
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const incoming = body && body.months;
+  if (!incoming || typeof incoming !== 'object') return c.json({ error: '缺少 months' }, 400);
+
+  const all = await readPerf(c.env);
+  const saved = [];
+  for (const [month, rows] of Object.entries(incoming)) {
+    if (!/^\d{4}-\d{2}$/.test(month) || !rows || typeof rows !== 'object') continue;
+    all.months[month] = rows;
+    saved.push(month);
+  }
+  all.generated = String(body.generated || new Date().toISOString().slice(0, 16).replace('T', ' '));
+  if (body.age_th) all.age_th = Number(body.age_th) || 60;
+  await c.env.CACHE.put(PERF_KEY, JSON.stringify(all));
+  return c.json({ ok: true, saved, total: Object.keys(all.months).length });
+});
+
+// DELETE /api/performance?month=2026-07  → 刪掉某月（僅老闆）
+app.delete('/api/performance', async (c) => {
+  const auth = validatePerfToken(c.req.header('X-Perf-Token'), c.env);
+  if (!auth || auth.role !== 'owner') return c.json({ error: '未授權（需老闆通行碼）' }, 401);
+  const month = c.req.query('month');
+  if (!month) return c.json({ error: '缺少 month' }, 400);
+  const all = await readPerf(c.env);
+  if (!all.months[month]) return c.json({ error: '找不到該月份' }, 404);
+  delete all.months[month];
+  await c.env.CACHE.put(PERF_KEY, JSON.stringify(all));
+  return c.json({ ok: true, total: Object.keys(all.months).length });
 });
 
 // ── Fetch handler：外層 wrapper 確保 CORS 覆蓋所有 response ─────────────────
