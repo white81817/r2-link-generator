@@ -160,7 +160,12 @@ async function grabOffer(page, id) {
   }
 
   const res = await readSkuModel(page);
-  if (!res) throw new Error('找不到 skuModel');
+  if (!res) {
+    // 下架商品沒有 window.context，只有一句「商品已下架」，要講人話而不是「找不到 skuModel」
+    const delisted = await page.evaluate(() =>
+      /商品已下架|该商品已下架|商品不存在/.test((document.body?.innerText || '').slice(0, 200)));
+    throw new Error(delisted ? '商品已下架' : '找不到 skuModel');
+  }
   const dj = res.dataJson;
   const sm = dj.skuModel;
   // 兩種定價模型：
