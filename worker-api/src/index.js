@@ -20,7 +20,7 @@ function corsHeaders(origin) {
     return {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Quote-Token',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Quote-Token, X-Perf-Token',
       'Access-Control-Max-Age': '86400',
     };
   }
@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-21-performance-v1',
+  version: '2026-08-21-performance-v2',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance'],
   timestamp: new Date().toISOString(),
 }));

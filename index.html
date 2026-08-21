@@ -5238,22 +5238,36 @@ ${co.bank?`<div class="bank">
     }
 
     async function perfApi(path, options) {
-      const res = await fetch(PERF_API + path, {
-        ...options,
-        headers: { 'Content-Type': 'application/json', 'X-Perf-Token': perfToken, ...(options && options.headers) },
-      });
-      const data = await res.json().catch(() => ({}));
-      return { ok: res.ok, status: res.status, data };
+      try {
+        const res = await fetch(PERF_API + path, {
+          ...options,
+          headers: { 'Content-Type': 'application/json', 'X-Perf-Token': perfToken, ...(options && options.headers) },
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, status: res.status, data };
+      } catch (e) {
+        // 網路/CORS 失敗會走這裡；沒有這層的話畫面會完全沒反應，很難查
+        return { ok: false, status: 0, data: { error: '連線失敗：' + e.message } };
+      }
+    }
+
+    function perfShowError(msg) {
+      const el = document.getElementById('perfLockError');
+      el.textContent = msg;
+      el.classList.remove('hidden');
     }
 
     async function perfLogin() {
       const pwd = document.getElementById('perfPasswordInput').value.trim();
-      if (!pwd) return;
+      if (!pwd) { perfShowError('請輸入通行碼'); return; }
       perfToken = pwd;
-      const { ok, data } = await perfApi('/api/performance');
+      perfShowError('連線中…');
+      const { ok, status, data } = await perfApi('/api/performance');
       if (!ok) {
         perfToken = '';
-        document.getElementById('perfLockError').classList.remove('hidden');
+        perfShowError(status === 401 ? '通行碼錯誤，請重試'
+                    : status === 0 ? (data.error || '連線失敗')
+                    : `讀取失敗（${data.error || status}）`);
         return;
       }
       localStorage.setItem(PERF_TOKEN_KEY, pwd);

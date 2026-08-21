@@ -1,0 +1,9 @@
+# macOS SMB 在檔案仍被開啟時刪除，會留下這種墓碑檔（刪它反而會再生一個）
+# 卸載/重新掛載網路磁碟後會自動消失，不要 commit 進來
+.smbdelete*
+.DS_Store
+
+# 依賴與建置產物
+node_modules/
+tools/out/
+tools/.chrome-1688/
