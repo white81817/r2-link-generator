@@ -2736,6 +2736,41 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         .toLowerCase();
     }
     const firstAxis1688 = (text) => norm1688(text).split('>')[0];
+    const axes1688 = (text) => norm1688(text).split('>').filter(Boolean);
+
+    // 繁→簡對照。料號是台灣同仁打的繁體，1688 頁面是簡體，不轉就對不到。
+    // 只收電商規格常見字；沒收到的靠後面的相似度比對兜底。
+    const T2S = (() => {
+      const pairs = '銀银紅红藍蓝綠绿黑黑灰灰紫紫橙橙粉粉棕棕咖咖金金鋼钢鐵铁鋁铝銅铜膠胶纖纤維维棉棉麻麻皮皮龍龙長长寬宽高高厚厚徑径號号碼码粗粗細细輕轻重重裝装組组套套雙双單单個个隻只條条張张塊块包包袋袋盒盒箱箱款款型型色色版版帶带無无有有送送贈赠配配備备全全半半折折疊叠收收納纳儲储掛挂支支架架桿杆頭头腳脚邊边面面底底蓋盖門门窗窗車车電电動动機机器器線线燈灯風风冷冷熱热溫温濕湿乾干淨净洗洗護护養养專专業业用用戶户外外內内國国產产進进質质量量優优級级標标準准適适合合兒儿童童男男女女親亲側侧後后前前左左右右上上下下大大中中小小加加減减多多少少新新舊旧買买賣卖價价錢钱貨货運运費费開开關关寶宝護护墊垫罩罩套套殼壳膜膜貼贴繩绳鏈链環环圈圈釘钉螺螺絲丝彈弹簧簧鎖锁扣扣夾夹鉤钩籃篮筐筐櫃柜桌桌椅椅床床墊垫枕枕被被毯毯巾巾帽帽鞋鞋襪袜褲裤衣衣裙裙包包傘伞鏡镜錶表筆笔紙纸書书畫画燈灯泡泡管管線线插插頭头充充器器池池板板片片塊块條条卷卷捲卷噴喷壺壶瓶瓶杯杯碗碗盤盘勺勺叉叉刀刀鍋锅爐炉烤烤煮煮蒸蒸炸炸攪搅拌拌顯显擴扩腦脑觸触靜静聲声響响攝摄錄录視视頻频網网絡络傳传輸输資资訊讯檔档記记憶忆體体螢萤鍵键盤盘滑滑鼠鼠麥麦喇喇適适轉转埠埠槽槽讀读寫写貼贴殼壳座座托托臂臂夾夹調调節节升升降降旋旋摺折攜携實实鋼钢玻玻璃璃亞亚矽硅尼尼滌涤綸纶純纯織织繡绣縫缝拉拉鍊链釦扣磁磁吸吸壁壁孔孔繫系綁绑鬆松緊紧軟软硬硬厚厚薄薄寬宽窄窄圓圆방방層层格格層层抽抽屜屉櫃柜盒盒蓋盖鎖锁鑰钥匙匙鏈链繩绳網网袋袋箱箱籃篮簍篓'
+        .match(/../g) || [];
+      const m = {};
+      for (const p of pairs) if (p[0] !== p[1]) m[p[0]] = p[1];
+      return m;
+    })();
+
+    // 寬鬆正規化：全形轉半形、繁轉簡、去掉裝飾符號
+    function loose1688(text) {
+      return norm1688(text)
+        .replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+        .replace(/[^\w一-鿿>.]/g, '')   // 括號、星號、間隔號一律拿掉
+        .split('').map((c) => T2S[c] || c).join('');
+    }
+
+    // 相似度：Levenshtein 距離換算成 0～1
+    function sim1688(a, b) {
+      if (a === b) return 1;
+      if (!a.length || !b.length) return 0;
+      const m = a.length, n = b.length;
+      let prev = Array.from({ length: n + 1 }, (_, j) => j);
+      for (let i = 1; i <= m; i++) {
+        const cur = [i];
+        for (let j = 1; j <= n; j++) {
+          cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        }
+        prev = cur;
+      }
+      return 1 - prev[n] / Math.max(m, n);
+    }
     // 顯示用：把 &gt; 之類還原成可讀的字元（KV 存的是 1688 原樣的字串）
     const show1688 = (text) => String(text || '')
       .replace(/&gt;/g, ' > ').replace(/&lt;/g, '<')
@@ -2760,17 +2795,53 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return { specText, url, offerId, nonAli };
     }
 
-    // 在單一 offer 的 SKU 清單裡找符合料號規格文字的那一筆
+    // 在單一 offer 的 SKU 清單裡找符合料號規格文字的那一筆。
+    // 由嚴到寬逐級嘗試，每級都要求「唯一命中」才算數；命中方式一併回傳，
+    // 只有最嚴的兩級視為可信，其餘在畫面上標橘色要人工確認。
     function match1688Sku(specText, offer) {
       const target = norm1688(specText);
       if (!target || !offer || !Array.isArray(offer.skus)) return null;
+      const loose = loose1688(specText);
+      const ambiguous = [];
+      const pick = (list, how) => {
+        if (list.length === 1) return { ...list[0], how };
+        if (list.length > 1 && !ambiguous.length) ambiguous.push(...list);
+        return null;
+      };
 
-      const pick = (list, how) => (list.length === 1 ? { ...list[0], how } : null);
-      return pick(offer.skus.filter(s => firstAxis1688(s.specText) === target), '第一軸完全相同')
+      const hit =
+        // 1) 逐字相同
+        pick(offer.skus.filter(s => firstAxis1688(s.specText) === target), '第一軸完全相同')
         || pick(offer.skus.filter(s => norm1688(s.specText) === target), '整串完全相同')
-        || pick(offer.skus.filter(s => firstAxis1688(s.specText).startsWith(target)), '第一軸開頭相符')
-        || pick(offer.skus.filter(s => norm1688(s.specText).includes(target)), '包含');
+        // 2) 料號記的可能不是第一軸，任一軸相同也算
+        || pick(offer.skus.filter(s => axes1688(s.specText).includes(target)), '某一軸完全相同')
+        // 3) 寬鬆正規化後相同（繁簡、全形、裝飾符號差異）
+        || pick(offer.skus.filter(s => loose1688(s.specText).split('>')[0] === loose), '繁簡／符號差異')
+        || pick(offer.skus.filter(s => loose1688(s.specText).split('>').includes(loose)), '繁簡／符號差異（非第一軸）')
+        // 4) 開頭相符或包含
+        || pick(offer.skus.filter(s => loose1688(s.specText).split('>')[0].startsWith(loose)), '開頭相符')
+        || pick(offer.skus.filter(s => loose1688(s.specText).includes(loose)), '包含');
+      if (hit) return hit;
+
+      // 5) 最後才用相似度：要夠像（≥0.72），而且明顯勝過第二名（差 ≥0.08），
+      //    否則寧可不猜——猜錯會買錯貨。
+      const scored = offer.skus
+        .map(s => ({ s, score: Math.max(
+          sim1688(loose, loose1688(s.specText).split('>')[0]),
+          sim1688(loose, loose1688(s.specText).replace(/>/g, '')),
+        ) }))
+        .sort((a, b) => b.score - a.score);
+      const [best, second] = scored;
+      if (best && best.score >= 0.72 && (!second || best.score - second.score >= 0.08)) {
+        return { ...best.s, how: `相似度 ${(best.score * 100).toFixed(0)}%`, score: best.score };
+      }
+      // 對到多筆時要講清楚是「規格文字不夠細」而不是「找不到」，
+      // 多規格軸商品若料號只記第一軸，本來就無法決定是哪一筆。
+      return ambiguous.length ? { ambiguous } : null;
     }
+
+    // 只有這兩級算「逐字相同」，其餘一律提醒人工確認
+    const EXACT_1688 = ['第一軸完全相同', '整串完全相同'];
 
     function setSku1688Status(html, cls) {
       const el = document.getElementById('sku1688Status');
@@ -2828,6 +2899,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         if (!offer) return fail(`offer ${offerId} 尚未收錄進 SKU 庫`);
 
         const m = match1688Sku(specText, offer);
+        if (m && m.ambiguous) {
+          const opts = m.ambiguous.slice(0, 4).map(x => show1688(x.specText)).join('、');
+          return fail(`規格「${specText}」在 offer ${offerId} 對到 ${m.ambiguous.length} 筆（${opts}${m.ambiguous.length > 4 ? '…' : ''}），料號要補上第二個規格`);
+        }
         if (!m) return fail(`offer ${offerId} 裡找不到規格「${specText}」`);
 
         // 舊版 worker 沒存 unitPrice，退回讀 price，避免顯示成「—」
@@ -2842,7 +2917,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         out.dataset.sku = JSON.stringify(rec);
         out.title = `${show1688(m.specText)}\n¥${unitPrice ?? '—'}（${m.priceSource === 'range' ? '階梯價' : '單一價'}）\n比對方式：${m.how}`;
         priceEl.textContent = unitPrice ? `¥${unitPrice}${m.priceSource === 'range' ? '(階梯)' : ''}` : '';
-        out.classList.toggle('text-orange-600', m.how !== '第一軸完全相同');
+        out.classList.toggle('text-orange-600', !EXACT_1688.includes(m.how));
         details.push({
           row: i + 1, ok: true, want: specText, got: m.specText,
           skuId: m.skuId, unitPrice, priceSource: m.priceSource,
@@ -2879,12 +2954,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <td class="border px-2 py-1 text-red-500" colspan="4">✗ ${esc(d.why)}</td>
           </tr>`;
         }
-        const exact = d.how === '第一軸完全相同';
-        const same  = norm1688(d.want) === firstAxis1688(d.got);
+        const exact = EXACT_1688.includes(d.how);
+        const same  = exact;
         return `<tr class="${exact ? '' : 'bg-orange-50'}">
           <td class="border px-2 py-1 text-center text-gray-500">${d.row}</td>
           <td class="border px-2 py-1">${esc(d.want)}</td>
-          <td class="border px-2 py-1">${same ? '<span class="text-green-600">＝</span>' : '<span class="text-orange-600 font-bold">≠ 請確認</span>'}</td>
+          <td class="border px-2 py-1">${same ? '<span class="text-green-600">＝</span>' : `<span class="text-orange-600 font-bold" title="${esc(d.how)}">≠ ${esc(d.how)}</span>`}</td>
           <td class="border px-2 py-1">${esc(show1688(d.got))}</td>
           <td class="border px-2 py-1 font-mono text-xs">${esc(d.skuId)}</td>
           <td class="border px-2 py-1 text-right whitespace-nowrap">${d.unitPrice ? '¥' + esc(d.unitPrice) + (d.priceSource === 'range' ? '<span class="text-gray-400 text-xs">(階梯)</span>' : '') : '<span class="text-gray-400">—</span>'}</td>

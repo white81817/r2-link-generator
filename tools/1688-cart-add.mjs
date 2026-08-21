@@ -101,6 +101,8 @@ const norm = (t) => String(t || '')
   .replace(/[（）]/g, (m) => (m === '（' ? '(' : ')'))
   .replace(/\s+/g, '').toLowerCase();
 const firstAxis = (t) => norm(t).split('>')[0];
+const axes = (t) => norm(t).split('>').filter(Boolean);
+const showSpec = (t) => String(t || '').replace(/&gt;/g, ' > ').replace(/&amp;/g, '&');
 
 function parseVendorCode(raw, shortLinks) {
   const text = String(raw || '').replace(/<br\s*\/?>/gi, '\n');
@@ -112,15 +114,80 @@ function parseVendorCode(raw, shortLinks) {
   return { specText, url, offerId, nonAli: /taobao\.com|tmall\.com/.test(url) };
 }
 
+const T2S = (() => {
+  const pairs = '銀银紅红藍蓝綠绿黑黑灰灰紫紫橙橙粉粉棕棕咖咖金金鋼钢鐵铁鋁铝銅铜膠胶纖纤維维棉棉麻麻皮皮龍龙長长寬宽高高厚厚徑径號号碼码粗粗細细輕轻重重裝装組组套套雙双單单個个隻只條条張张塊块包包袋袋盒盒箱箱款款型型色色版版帶带無无有有送送贈赠配配備备全全半半折折疊叠收收納纳儲储掛挂支支架架桿杆頭头腳脚邊边面面底底蓋盖門门窗窗車车電电動动機机器器線线燈灯風风冷冷熱热溫温濕湿乾干淨净洗洗護护養养專专業业用用戶户外外內内國国產产進进質质量量優优級级標标準准適适合合兒儿童童男男女女親亲側侧後后前前左左右右上上下下大大中中小小加加減减多多少少新新舊旧買买賣卖價价錢钱貨货運运費费開开關关寶宝護护墊垫罩罩套套殼壳膜膜貼贴繩绳鏈链環环圈圈釘钉螺螺絲丝彈弹簧簧鎖锁扣扣夾夹鉤钩籃篮筐筐櫃柜桌桌椅椅床床墊垫枕枕被被毯毯巾巾帽帽鞋鞋襪袜褲裤衣衣裙裙包包傘伞鏡镜錶表筆笔紙纸書书畫画燈灯泡泡管管線线插插頭头充充器器池池板板片片塊块條条卷卷捲卷噴喷壺壶瓶瓶杯杯碗碗盤盘勺勺叉叉刀刀鍋锅爐炉烤烤煮煮蒸蒸炸炸攪搅拌拌顯显擴扩腦脑觸触靜静聲声響响攝摄錄录視视頻频網网絡络傳传輸输資资訊讯檔档記记憶忆體体螢萤鍵键盤盘滑滑鼠鼠麥麦喇喇適适轉转埠埠槽槽讀读寫写貼贴殼壳座座托托臂臂夾夹調调節节升升降降旋旋摺折攜携實实鋼钢玻玻璃璃亞亚矽硅尼尼滌涤綸纶純纯織织繡绣縫缝拉拉鍊链釦扣磁磁吸吸壁壁孔孔繫系綁绑鬆松緊紧軟软硬硬厚厚薄薄寬宽窄窄圓圆방방層层格格層层抽抽屜屉櫃柜盒盒蓋盖鎖锁鑰钥匙匙鏈链繩绳網网袋袋箱箱籃篮簍篓'
+    .match(/../g) || [];
+  const m = {};
+  for (const p of pairs) if (p[0] !== p[1]) m[p[0]] = p[1];
+  return m;
+})();
+
+function looseNorm(text) {
+  return norm(text)
+    .replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[^\w一-鿿>.]/g, '')   // 括號、星號、間隔號一律拿掉
+    .split('').map((c) => T2S[c] || c).join('');
+}
+
+function simRatio(a, b) {
+  if (a === b) return 1;
+  if (!a.length || !b.length) return 0;
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return 1 - prev[n] / Math.max(m, n);
+}
+
 function matchSku(specText, offer) {
   const target = norm(specText);
-  if (!target || !offer?.skus) return null;
-  const one = (list, how) => (list.length === 1 ? { ...list[0], how } : null);
-  return one(offer.skus.filter((s) => firstAxis(s.specText) === target), '完全相同')
-    || one(offer.skus.filter((s) => norm(s.specText) === target), '整串相同')
-    || one(offer.skus.filter((s) => firstAxis(s.specText).startsWith(target)), '開頭相符')
-    || one(offer.skus.filter((s) => norm(s.specText).includes(target)), '包含');
+  if (!target || !offer || !Array.isArray(offer.skus)) return null;
+  const loose = looseNorm(specText);
+  const ambiguous = [];
+  const pick = (list, how) => {
+    if (list.length === 1) return { ...list[0], how };
+    if (list.length > 1 && !ambiguous.length) ambiguous.push(...list);
+    return null;
+  };
+
+  const hit =
+    // 1) 逐字相同
+    pick(offer.skus.filter(s => firstAxis(s.specText) === target), '第一軸完全相同')
+    || pick(offer.skus.filter(s => norm(s.specText) === target), '整串完全相同')
+    // 2) 料號記的可能不是第一軸，任一軸相同也算
+    || pick(offer.skus.filter(s => axes(s.specText).includes(target)), '某一軸完全相同')
+    // 3) 寬鬆正規化後相同（繁簡、全形、裝飾符號差異）
+    || pick(offer.skus.filter(s => looseNorm(s.specText).split('>')[0] === loose), '繁簡／符號差異')
+    || pick(offer.skus.filter(s => looseNorm(s.specText).split('>').includes(loose)), '繁簡／符號差異（非第一軸）')
+    // 4) 開頭相符或包含
+    || pick(offer.skus.filter(s => looseNorm(s.specText).split('>')[0].startsWith(loose)), '開頭相符')
+    || pick(offer.skus.filter(s => looseNorm(s.specText).includes(loose)), '包含');
+  if (hit) return hit;
+
+  // 5) 最後才用相似度：要夠像（≥0.72），而且明顯勝過第二名（差 ≥0.08），
+  //    否則寧可不猜——猜錯會買錯貨。
+  const scored = offer.skus
+    .map(s => ({ s, score: Math.max(
+      simRatio(loose, looseNorm(s.specText).split('>')[0]),
+      simRatio(loose, looseNorm(s.specText).replace(/>/g, '')),
+    ) }))
+    .sort((a, b) => b.score - a.score);
+  const [best, second] = scored;
+  if (best && best.score >= 0.72 && (!second || best.score - second.score >= 0.08)) {
+    return { ...best.s, how: `相似度 ${(best.score * 100).toFixed(0)}%`, score: best.score };
+  }
+  // 對到多筆時要講清楚是「規格文字不夠細」而不是「找不到」，
+  // 多規格軸商品若料號只記第一軸，本來就無法決定是哪一筆。
+  return ambiguous.length ? { ambiguous } : null;
 }
+
+const EXACT = ['第一軸完全相同', '整串完全相同'];
+
 
 if (SUGGEST) {
   const { list } = await api('/api/products');
@@ -182,6 +249,11 @@ for (const o of orders) {
     const offer = skuDb.offers[offerId];
     if (!offer)   { problems.push(`第${o.line}列：offer ${offerId} 尚未收錄進 SKU 庫`); continue; }
     const m = matchSku(specText, offer);
+    if (m && m.ambiguous) {
+      const opts = m.ambiguous.slice(0, 4).map((x) => showSpec(x.specText)).join('、');
+      problems.push(`第${o.line}列：規格「${specText}」在 offer ${offerId} 對到 ${m.ambiguous.length} 筆（${opts}${m.ambiguous.length > 4 ? '…' : ''}），料號要補上第二個規格`);
+      continue;
+    }
     if (!m)       { problems.push(`第${o.line}列：offer ${offerId} 找不到規格「${specText}」`); continue; }
     rec = { offerId, skuId: m.skuId, specId: m.specId, specText: m.specText, unitPrice: m.unitPrice };
     how = m.how;
