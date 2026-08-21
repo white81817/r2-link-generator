@@ -68,8 +68,10 @@ const orders = rawRows.map((r, i) => ({
   code:  String(pick(r, ['商品編號', '商品编号', 'code']) ?? '').trim(),
   style: String(pick(r, ['樣式', '样式', 'style']) ?? '').trim(),
   size:  String(pick(r, ['尺寸', 'size']) ?? '').trim(),
+  // 料號可直接寫在採購單裡，這樣不必先把商品放進共用商品庫
+  vendorCode: String(pick(r, ['廠商料號', '料號', 'vendorCode']) ?? '').trim(),
   qty:   Number(pick(r, ['數量', '数量', 'qty', 'quantity']) ?? 0),
-})).filter((o) => o.code && o.qty > 0);
+})).filter((o) => (o.code || o.vendorCode) && o.qty > 0);
 
 if (!SUGGEST && !orders.length) { console.error('採購單裡沒有有效資料（需要 商品編號 與 數量）'); process.exit(1); }
 if (!SUGGEST) console.log(`採購單讀入 ${orders.length} 列`);
@@ -154,14 +156,21 @@ if (SUGGEST) {
 const plan = [];
 const problems = [];
 for (const o of orders) {
-  const prod = await getProduct(o.code);
-  if (!prod) { problems.push(`第${o.line}列：共用商品庫沒有商品 ${o.code}`); continue; }
+  let v = null;
 
-  const variants = prod.variants || (prod.data && prod.data.variants) || [];
-  const v = variants.find((x) =>
-    (!o.style || String(x.style).trim() === o.style) &&
-    (!o.size  || String(x.size).trim()  === o.size));
-  if (!v) { problems.push(`第${o.line}列：${o.code} 找不到規格「${o.style} / ${o.size}」`); continue; }
+  if (o.vendorCode) {
+    // 採購單自帶料號：不必查共用商品庫
+    v = { vendorCode: o.vendorCode, style: o.style, size: o.size };
+  } else {
+    const prod = await getProduct(o.code);
+    if (!prod) { problems.push(`第${o.line}列：共用商品庫沒有商品 ${o.code}（或改在採購單直接填「廠商料號」欄）`); continue; }
+
+    const variants = prod.variants || (prod.data && prod.data.variants) || [];
+    v = variants.find((x) =>
+      (!o.style || String(x.style).trim() === o.style) &&
+      (!o.size  || String(x.size).trim()  === o.size));
+    if (!v) { problems.push(`第${o.line}列：${o.code} 找不到規格「${o.style} / ${o.size}」`); continue; }
+  }
 
   // 商品存檔時若已比對過就直接用，否則現場用料號比對一次
   let rec = v.sku1688 && v.sku1688.specId ? v.sku1688 : null;
@@ -192,7 +201,8 @@ for (const o of orders) {
 console.log('\n=== 採購計畫 ===');
 for (const p of plan) {
   const warn = p.beginNum && p.qty < p.beginNum ? `  ⚠ 起訂量 ${p.beginNum}` : '';
-  console.log(`  ${p.code} ${p.style}/${p.size} ×${p.qty}  →  offer ${p.offerId} sku ${p.skuId}`);
+  const label = p.code ? `${p.code} ${p.style}/${p.size}` : (p.offerTitle || '料號').slice(0, 24);
+  console.log(`  ${label} ×${p.qty}  →  offer ${p.offerId} sku ${p.skuId}`);
   console.log(`      ${p.specText.replace(/&gt;/g, ' > ')} ｜ ¥${p.unitPrice ?? '—'} ｜ 小計 ¥${p.subtotal?.toFixed(2) ?? '—'} ｜ ${p.how}${warn}`);
 }
 const total = plan.reduce((a, p) => a + (p.subtotal || 0), 0);
