@@ -52,7 +52,16 @@ const pick = (row, names) => {
   return undefined;
 };
 
-const wb = SUGGEST ? null : XLSX.readFile(path.resolve(FILE));
+// ESM 版的 xlsx 沒有綁 fs，XLSX.readFile 不存在，要自己讀檔再 parse。
+// CSV 若丟 buffer 進去會被當成 latin1，中文表頭會變亂碼，所以要先用 UTF-8 讀成字串。
+function readWorkbook(file) {
+  const buf = fs.readFileSync(file);
+  if (/\.(csv|txt)$/i.test(file)) {
+    return XLSX.read(buf.toString('utf8').replace(/^\uFEFF/, ''), { type: 'string' });
+  }
+  return XLSX.read(buf, { type: 'buffer' });
+}
+const wb = SUGGEST ? null : readWorkbook(path.resolve(FILE));
 const rawRows = wb ? XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' }) : [];
 const orders = rawRows.map((r, i) => ({
   line:  i + 2,
