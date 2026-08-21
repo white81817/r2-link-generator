@@ -38,7 +38,8 @@ const DO_ADD = has('--add');
 const TOKEN = process.env.QUOTE_TOKEN || '';
 const PROFILE = path.join(HERE, '.chrome-1688');
 
-if (!FILE) { console.error('需要 --file <採購單.xlsx 或 .csv>'); process.exit(1); }
+const SUGGEST = has('--suggest');
+if (!FILE && !SUGGEST) { console.error('需要 --file <採購單.xlsx 或 .csv>，或用 --suggest 列出可測試的品項'); process.exit(1); }
 if (!TOKEN) { console.error('缺少通行碼。請先執行：read -s QUOTE_TOKEN && export QUOTE_TOKEN'); process.exit(1); }
 
 // ── 讀採購單 ────────────────────────────────────────────────────────────────
@@ -51,9 +52,8 @@ const pick = (row, names) => {
   return undefined;
 };
 
-const wb = XLSX.readFile(path.resolve(FILE));
-const sheet = wb.Sheets[wb.SheetNames[0]];
-const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+const wb = SUGGEST ? null : XLSX.readFile(path.resolve(FILE));
+const rawRows = wb ? XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' }) : [];
 const orders = rawRows.map((r, i) => ({
   line:  i + 2,
   code:  String(pick(r, ['商品編號', '商品编号', 'code']) ?? '').trim(),
@@ -62,8 +62,8 @@ const orders = rawRows.map((r, i) => ({
   qty:   Number(pick(r, ['數量', '数量', 'qty', 'quantity']) ?? 0),
 })).filter((o) => o.code && o.qty > 0);
 
-if (!orders.length) { console.error('採購單裡沒有有效資料（需要 商品編號 與 數量）'); process.exit(1); }
-console.log(`採購單讀入 ${orders.length} 列`);
+if (!SUGGEST && !orders.length) { console.error('採購單裡沒有有效資料（需要 商品編號 與 數量）'); process.exit(1); }
+if (!SUGGEST) console.log(`採購單讀入 ${orders.length} 列`);
 
 // ── 取共用商品庫與 1688 SKU 庫 ──────────────────────────────────────────────
 const api = async (p) => {
@@ -109,6 +109,36 @@ function matchSku(specText, offer) {
     || one(offer.skus.filter((s) => norm(s.specText) === target), '整串相同')
     || one(offer.skus.filter((s) => firstAxis(s.specText).startsWith(target)), '開頭相符')
     || one(offer.skus.filter((s) => norm(s.specText).includes(target)), '包含');
+}
+
+if (SUGGEST) {
+  const { list } = await api('/api/products');
+  console.log(`共用商品庫有 ${list.length} 個商品，掃描哪些規格的料號能對到 1688 SKU…\n`);
+  console.log('商品編號,樣式,尺寸,數量        ← 可直接貼進採購單（數量自己改）');
+  let found = 0;
+  for (const item of list) {
+    const code = item.code || item;
+    const prod = await api(`/api/products/${encodeURIComponent(code)}`).catch(() => null);
+    const variants = prod?.variants || prod?.data?.variants || [];
+    for (const v of variants) {
+      const rec = v.sku1688?.specId ? v.sku1688 : null;
+      let ok = !!rec, price = rec?.unitPrice;
+      if (!ok) {
+        const { specText, offerId, nonAli } = parseVendorCode(v.vendorCode, skuDb.shortLinks);
+        if (nonAli || !offerId || !skuDb.offers[offerId]) continue;
+        const m = matchSku(specText, skuDb.offers[offerId]);
+        if (!m || !m.specId) continue;
+        ok = true; price = m.unitPrice;
+      }
+      if (!ok) continue;
+      found++;
+      console.log(`${code},${v.style || ''},${v.size || ''},1        # ¥${price ?? '—'} ${(prod?.name || prod?.data?.name || '').slice(0, 20)}`);
+      if (found >= Number(flag('--suggest-limit', 20))) break;
+    }
+    if (found >= Number(flag('--suggest-limit', 20))) break;
+  }
+  console.log(found ? `\n共列出 ${found} 筆可用的規格。` : '\n沒有找到任何能對到 1688 SKU 的規格——可能商品的料號還沒填 1688 網址，或那些 offer 還沒抓。');
+  process.exit(0);
 }
 
 // ── 逐列解析成 offerId + specId ─────────────────────────────────────────────

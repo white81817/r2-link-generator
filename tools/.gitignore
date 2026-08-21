@@ -1,3 +1,5 @@
 node_modules/
 out/
 .chrome-1688/
+採購單/*
+!採購單/範本.csv
