@@ -2191,6 +2191,15 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             </div>
             <div id="p_image_result" class="text-xs text-gray-500 mt-1"></div>
             <div id="p_image_preview" class="flex flex-wrap gap-1 mt-2"></div>
+            <label class="block text-sm font-bold text-gray-700 mt-3 mb-1">匯出給平台的圖片網址</label>
+            <select id="p_platform_img_convert" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="1">自動轉檔（建議）— 固定輸出 JPEG，依各平台尺寸與檔案大小規格</option>
+              <option value="0">直接用原始網址（img 網域，格式由對方的瀏覽器決定）</option>
+            </select>
+            <p class="text-xs text-gray-400 mt-1">
+              蝦皮只收 JPG／JPEG／PNG，mo+ 主圖限 38k~1000k、專推圖限寬1000px 且 500k 以下。
+              原始網址會依對方送的 Accept 回 AVIF／WebP，蝦皮不吃，所以預設走轉檔。
+            </p>
           </div>
         </div>
       </div>
@@ -2540,6 +2549,31 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // 取得某平台選用的圖片網址（未選任何張時回傳空陣列）
     function getPlatformImages(platform) {
       return (imageSelection[platform] || []).map(i => productImages[i]).filter(Boolean);
+    }
+
+    // 各上架平台對圖片格式與大小的硬性規定（取自各自的官方模板說明）
+    // 蝦皮：接受 JPG/JPEG/PNG，每張最大 2.0MB，建議 1:1
+    // mo+ ：主圖／廣告圖 38kb~1000kb；專推圖 寬1000px、高1500px以下、500kb以下
+    const PLATFORM_IMG_PRESET = {
+      shopee:   { w: 1000, h: 1000, max: 2000 },
+      momoMain: { w: 1000, h: 1000, max: 1000 },
+      momoPush: { w: 1000, max: 500 },   // 不給高度，長圖用 scale-down 保持比例
+    };
+
+    // 把 R2 圖片網址換成「固定輸出 JPEG」的轉檔網址。
+    // 前台走 img.* 是靠 Accept 協商回 AVIF/WebP，但蝦皮只收 JPG/JPEG/PNG，
+    // 平台爬蟲送什麼 header 我們控制不了，所以給平台的網址一律走這條。
+    function platformImgUrl(url, presetName) {
+      if (!url) return '';
+      if (pVal('p_platform_img_convert') === '0') return url;
+      const key = momoImageKey(url);
+      if (!key) return url;
+      const p = PLATFORM_IMG_PRESET[presetName];
+      if (!p) return url;
+      const qs = [`w=${p.w}`];
+      if (p.h) qs.push(`h=${p.h}`);
+      if (p.max) qs.push(`max=${p.max}`);
+      return `${WORKER_URL}/api/img/${key.split('/').map(encodeURIComponent).join('/')}?${qs.join('&')}`;
     }
 
     // 切換單張圖片在某平台的選取狀態；重新選取時會排到最後
@@ -3259,6 +3293,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         tagsCustom:   pVal('p_tags_custom'),
         shopeeCatId:  pVal('p_shopee_cat_id'),
         imagePath:    pVal('p_image_path'),
+        platformImgConvert: pVal('p_platform_img_convert'),
         images:       productImages,
         imageSelection: imageSelection,
         momo:         collectMomoData(),
@@ -3577,6 +3612,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setVal('p_shopee_cat_id', data.shopeeCatId);
       document.getElementById('p_shopee_cat_picked').textContent = data.shopeeCatId ? ('分類 ID ' + data.shopeeCatId) : '';
       setVal('p_image_path', data.imagePath);
+      setVal('p_platform_img_convert', data.platformImgConvert || '1');
       productImages = data.images || [];
       // 舊資料沒有 imageSelection，預設全選以維持原本行為
       const allIdx = productImages.map((_, i) => i);
@@ -3929,8 +3965,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[12] = v.shopeeSell || '';              // 價格（規格表手填的蝦皮售價）
         r[13] = v.stock || '0';                  // 庫存
         r[14] = v.barcode || (code.slice(0, -2) + String(i + 1).padStart(2, '0'));  // 商品選項貨號
-        r[18] = imgs[0] || '';                   // 主商品圖片
-        for (let k = 0; k < 8; k++) r[19 + k] = imgs[k + 1] || '';  // 商品圖片 1~8
+        r[18] = platformImgUrl(imgs[0], 'shopee');   // 主商品圖片
+        for (let k = 0; k < 8; k++) r[19 + k] = platformImgUrl(imgs[k + 1], 'shopee');  // 商品圖片 1~8
         r[27] = v.weight || '';                  // 重量
         for (let k = 31; k <= 35; k++) r[k] = '開啟';   // 配送方式預設全開
         return r;
@@ -4089,9 +4125,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[30] = pVal('p_momo_ship_code').trim(); // 出貨/回收地代碼
         r[33] = pVal('p_highlight').trim();      // 商品特色標語（取自加強文字）
         r[35] = desc;                            // 詳細介紹內文
-        r[39] = imgs.slice(0, 6).join('\n');     // 主圖(B圖) 最多6張
-        r[40] = adImg;                           // 廣告圖(O圖)：手選的那張
-        r[41] = imgs.slice(0, 20).join('\n');    // 專推圖 最多20張
+        r[39] = imgs.slice(0, 6).map(u => platformImgUrl(u, 'momoMain')).join('\n');   // 主圖(B圖) 最多6張，38k~1000k
+        r[40] = platformImgUrl(adImg, 'momoMain');                                      // 廣告圖(O圖)：手選的那張
+        r[41] = imgs.slice(0, 20).map(u => platformImgUrl(u, 'momoPush')).join('\n');   // 專推圖 最多20張，寬1000、500k以下
         return r;
       });
 
@@ -4608,6 +4644,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       productImages = [];
       imageSelection = emptyImageSelection();
       renderImageResult('', false);
+      setVal('p_platform_img_convert', '1');
       applyMomoData(null);
       document.getElementById('p_preorder_note').value = '(3~10個工作天出貨)';
       document.getElementById('opt1_name').value = '樣式';

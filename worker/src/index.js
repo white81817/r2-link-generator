@@ -1,3 +1,8 @@
+// encodeURI 不會編碼 ? & # 等字元，檔名帶到就會被當成 query；逐段編碼才安全
+function encodePath(key) {
+  return String(key).split('/').map(encodeURIComponent).join('/');
+}
+
 // ===== 無相依的 ZIP 打包（STORE，不壓縮）=====
 // 圖片本來就是壓過的格式，deflate 幾乎沒有收益，換來的是零 npm 相依、
 // 這支 worker 仍可用 Cloudflare 後台編輯器直接貼上。
@@ -69,7 +74,7 @@ export default {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Expose-Headers': 'X-Zip-Count, X-Zip-Missing, X-Zip-Report',
+      'Access-Control-Expose-Headers': 'X-Zip-Count, X-Zip-Missing, X-Zip-Report, X-Img-Quality, X-Img-Bytes, X-Img-Fallback',
     };
 
     if (request.method === 'OPTIONS') {
@@ -135,14 +140,74 @@ export default {
       }
     }
 
+    // GET /api/img/<key>?w=&h=&max=&fit= — 給上架平台用的「固定輸出」圖片網址
+    // 前台的 img.* 轉檔 worker 是看 Accept 決定格式（會回 AVIF/WebP），
+    // 但蝦皮只收 JPG/JPEG/PNG，平台爬蟲送什麼 header 我們控制不了，
+    // 所以這裡一律輸出 JPEG、尺寸寫死，不做內容協商。
+    // max（KB）是目標檔案大小：由高畫質往下試，落進範圍就停。
+    if (request.method === 'GET' && url.pathname.startsWith('/api/img/')) {
+      const IMAGE_ORIGIN = (env.IMAGE_ORIGIN || 'https://photos.shaner.com.tw').replace(/\/+$/, '');
+      const key = decodeURIComponent(url.pathname.slice('/api/img/'.length));
+      if (!key) return new Response('Missing key', { status: 400, headers: corsHeaders });
+
+      const w = Number(url.searchParams.get('w')) || 0;
+      const h = Number(url.searchParams.get('h')) || 0;
+      const maxKB = Number(url.searchParams.get('max')) || 0;
+      // 只給寬度時用 scale-down 保持比例，長圖裁成正方形會毀版面
+      const fit = url.searchParams.get('fit') || (h ? 'cover' : 'scale-down');
+      const src = `${IMAGE_ORIGIN}/${encodePath(key)}`;
+
+      try {
+        let body = null;
+        let usedQuality = 0;
+        for (const quality of [90, 78, 65, 50]) {
+          const res = await fetch(src, {
+            cf: { image: { ...(w ? { width: w } : {}), ...(h ? { height: h } : {}), fit, format: 'jpeg', quality } },
+          });
+          if (!res.ok) break;
+          const buf = new Uint8Array(await res.arrayBuffer());
+          body = buf; usedQuality = quality;
+          if (!maxKB || buf.length <= maxKB * 1024) break;
+        }
+        // 轉檔失敗（Image Resizing 沒開、原檔不存在）就退回原始物件，不要回空圖
+        if (!body) {
+          const obj = await env.ASSETS_BUCKET.get(key);
+          if (!obj) return new Response(`Not found: ${key}`, { status: 404, headers: corsHeaders });
+          return new Response(obj.body, {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+              'Cache-Control': 'public, max-age=86400',
+              'X-Img-Fallback': 'original',
+            },
+          });
+        }
+        return new Response(body, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'image/jpeg',
+            'Content-Length': String(body.length),
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'Content-Disposition': 'inline',
+            'X-Img-Quality': String(usedQuality),
+            'X-Img-Bytes': String(body.length),
+          },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // GET /api/health — 用來確認這支 worker 有沒有部署到最新版
     // 改動 worker 時一併更新 version，開瀏覽器看數字就知道有沒有生效。
     if (request.method === 'GET' && url.pathname === '/api/health') {
       return new Response(JSON.stringify({
         ok: true,
         worker: 'label-sticker-worker',
-        version: '2026-08-26-zip-v1',
-        routes: ['/upload', '/file/:id', '/api/list-images', '/api/zip', '/api/health'],
+        version: '2026-08-26-img-v1',
+        routes: ['/upload', '/file/:id', '/api/list-images', '/api/img/:key', '/api/zip', '/api/health'],
         imageOrigin: env.IMAGE_ORIGIN || '(未設定，預設 https://photos.shaner.com.tw)',
         hasAssetsBucket: !!env.ASSETS_BUCKET,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -183,7 +248,7 @@ export default {
           const h = Number(f.h) || 0;
           if (w && h) {
             try {
-              const res = await fetch(`${IMAGE_ORIGIN}/${encodeURI(key)}`, {
+              const res = await fetch(`${IMAGE_ORIGIN}/${encodePath(key)}`, {
                 cf: { image: { width: w, height: h, fit: 'cover', format: 'jpeg', quality: 90 } },
               });
               if (res.ok) {
