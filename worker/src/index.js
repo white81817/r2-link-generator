@@ -135,6 +135,19 @@ export default {
       }
     }
 
+    // GET /api/health — 用來確認這支 worker 有沒有部署到最新版
+    // 改動 worker 時一併更新 version，開瀏覽器看數字就知道有沒有生效。
+    if (request.method === 'GET' && url.pathname === '/api/health') {
+      return new Response(JSON.stringify({
+        ok: true,
+        worker: 'label-sticker-worker',
+        version: '2026-08-26-zip-v1',
+        routes: ['/upload', '/file/:id', '/api/list-images', '/api/zip', '/api/health'],
+        imageOrigin: env.IMAGE_ORIGIN || '(未設定，預設 https://photos.shaner.com.tw)',
+        hasAssetsBucket: !!env.ASSETS_BUCKET,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // POST /api/zip — 依 { files: [{ key, name, w, h }] } 取檔、（可選）裁切後打包成 ZIP
     // momo購物網的圖片不是填網址，而是整包 ZIP 上傳、靠檔名對應商品編碼，所以改名的工作在這裡做。
     // 帶 w/h 時走 Cloudflare 的 cf.image 裁切：來源必須是「原檔」網域（photos.*），
