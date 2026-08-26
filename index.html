@@ -2198,7 +2198,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       <!-- momo 上架資料 -->
       <div class="bg-white rounded-lg shadow-md p-6 mb-6">
         <h2 class="text-xl font-semibold text-gray-700 mb-1">momo 上架資料</h2>
-        <p class="text-xs text-gray-400 mb-4">「匯出 mo+上架格式」與「匯出 momo購物網格式」共用；編號類欄位請至 momo 系統〔下載模版〕右側「編輯對照表」或〔D1102 商品提報管理（批次）〕查詢</p>
+        <p class="text-xs text-gray-400 mb-4">mo+（第三方店）與 momo購物網（自營）兩種匯出共用這一區；編號類欄位請至 momo 系統〔下載模版〕右側「編輯對照表」或〔D1102 商品提報管理（批次）〕查詢</p>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">商品編碼 <span class="text-red-400">*</span></label>
@@ -2210,7 +2210,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">商品分類</label>
-            <input id="p_momo_category" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="100100001">
+            <input id="p_momo_category" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="100100001" oninput="onMomoMemoKeyChange()">
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">商店分類</label>
@@ -2265,24 +2265,31 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <h3 class="text-sm font-bold text-gray-600 mt-6 mb-1">momo購物網專用</h3>
         <p class="text-xs text-gray-400 mb-3">
           代碼類欄位無法從 momo 匯出對照表，需在後台〔D1102 商品提報管理（批次）〕的下拉／搜尋查到後填一次。
-          填過的值會記在這台電腦，之後新商品自動帶入，不用每次重查。
+          填過的值會記在這台電腦：<b>業績屬性代碼綁「商品分類」、規格代碼綁「規格名稱」</b>，
+          換一類商品時鍵對不上就會留白等你填，不會把上一個商品的代碼帶過來。
+          產地／出貨地／保存期限則是共用預設。
+          <button onclick="clearMomoMemo()" class="text-blue-500 hover:text-blue-700 underline ml-1">清除已記住的代碼</button>
         </p>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">業績屬性內容代碼</label>
-            <input id="p_momo_perf_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="A001G001C001">
+            <input id="p_momo_perf_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="A001G001C001" oninput="updateMomoMemoHint('p_momo_perf_code')">
+            <div id="p_momo_perf_code_hint" class="text-xs text-gray-400 mt-1"></div>
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">產地編碼</label>
-            <input id="p_momo_origin_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="0886">
+            <input id="p_momo_origin_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="0886" oninput="updateMomoMemoHint('p_momo_origin_code')">
+            <div id="p_momo_origin_code_hint" class="text-xs text-gray-400 mt-1"></div>
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">規格1代碼</label>
-            <input id="p_momo_spec1_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="001">
+            <input id="p_momo_spec1_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="001" oninput="updateMomoMemoHint('p_momo_spec1_code')">
+            <div id="p_momo_spec1_code_hint" class="text-xs text-gray-400 mt-1"></div>
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">規格2代碼</label>
-            <input id="p_momo_spec2_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="002">
+            <input id="p_momo_spec2_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="002" oninput="updateMomoMemoHint('p_momo_spec2_code')">
+            <div id="p_momo_spec2_code_hint" class="text-xs text-gray-400 mt-1"></div>
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">保存期限（天）</label>
@@ -2334,12 +2341,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-1 text-left whitespace-nowrap">
                   樣式 <span class="text-red-400">*</span>
                   <div class="text-gray-400 font-normal">1shop規格名稱1</div>
-                  <input id="opt1_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="1shop名稱" value="樣式">
+                  <input id="opt1_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="1shop名稱" value="樣式" oninput="onMomoMemoKeyChange()">
                 </th>
                 <th class="border px-2 py-1 text-left whitespace-nowrap">
                   尺寸 <span class="text-red-400">*</span>
                   <div class="text-gray-400 font-normal">1shop規格名稱2</div>
-                  <input id="opt2_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="1shop名稱" value="尺寸">
+                  <input id="opt2_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="1shop名稱" value="尺寸" oninput="onMomoMemoKeyChange()">
                 </th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">廠商批價 <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap">廠商料號 <span class="text-red-400">*</span></th>
@@ -2387,10 +2394,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <button onclick="exportShopeeXLSX()" class="bg-orange-500 text-white px-6 py-2 rounded-lg hover:bg-orange-600 font-medium">
           ⬇ 匯出 蝦皮上架格式
         </button>
-        <button onclick="exportMomoXLSX()" class="bg-pink-600 text-white px-6 py-2 rounded-lg hover:bg-pink-700 font-medium">
+        <button onclick="exportMomoXLSX()" class="bg-pink-600 text-white px-6 py-2 rounded-lg hover:bg-pink-700 font-medium" title="momo 第三方賣場 mo店+：43 欄模板，圖片走網址">
           ⬇ 匯出 mo+上架格式
         </button>
-        <button onclick="exportMomoShopXLSX()" class="bg-pink-800 text-white px-6 py-2 rounded-lg hover:bg-pink-900 font-medium" title="momo購物網（供應商商品提報）模板，同時產生圖片 ZIP">
+        <button onclick="exportMomoShopXLSX()" class="bg-pink-800 text-white px-6 py-2 rounded-lg hover:bg-pink-900 font-medium" title="momo 自營購物網（供應商商品提報）：83 欄模板，圖片另出 ZIP">
           ⬇ 匯出 momo購物網格式
         </button>
         <button onclick="clearProductForm()" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium">
@@ -4162,24 +4169,92 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return list;
     }
 
-    // 代碼類欄位查一次很費工，填過就記在本機，下一個商品自動帶入
-    const MOMO_CODE_FIELDS = ['p_momo_perf_code', 'p_momo_origin_code', 'p_momo_spec1_code',
-                              'p_momo_spec2_code', 'p_momo_shelf_life', 'p_momo_ship_code'];
-    const MOMO_CODE_STORE = 'momoCodeDefaults_v1';
+    // 代碼類欄位查一次很費工，填過就記在本機。但不能無腦記「上一次的值」——
+    // 換一類商品時業績屬性、規格代碼都會不同，帶上一筆等於帶錯的。
+    // 所以分兩種：真正跟商品無關的用全域記；其餘各自綁一把鍵，鍵對不上就留白。
+    const MOMO_CODE_STORE = 'momoCodeMemo_v1';
+    // [欄位 id, 記憶分區, 取鍵的函式（null 表示全域）]
+    const MOMO_CODE_MEMO = [
+      ['p_momo_perf_code',   'byCategory', () => pVal('p_momo_category').trim()],
+      ['p_momo_spec1_code',  'bySpec1',    () => pVal('opt1_name').trim()],
+      ['p_momo_spec2_code',  'bySpec2',    () => pVal('opt2_name').trim()],
+      ['p_momo_origin_code', 'global',     null],
+      ['p_momo_ship_code',   'global',     null],
+      ['p_momo_shelf_life',  'global',     null],
+    ];
 
-    function rememberMomoCodes() {
-      const d = {};
-      MOMO_CODE_FIELDS.forEach(id => { const v = pVal(id).trim(); if (v) d[id] = v; });
-      try { localStorage.setItem(MOMO_CODE_STORE, JSON.stringify(d)); } catch {}
+    function loadMomoMemo() {
+      try { return JSON.parse(localStorage.getItem(MOMO_CODE_STORE) || '{}') || {}; }
+      catch { return {}; }
     }
 
-    function applyMomoCodeDefaults() {
-      let d = {};
-      try { d = JSON.parse(localStorage.getItem(MOMO_CODE_STORE) || '{}'); } catch {}
-      MOMO_CODE_FIELDS.forEach(id => {
-        const el = document.getElementById(id);
-        if (el && !el.value.trim() && d[id]) el.value = d[id];
+    function rememberMomoCodes() {
+      const memo = loadMomoMemo();
+      MOMO_CODE_MEMO.forEach(([id, bucket, keyFn]) => {
+        const val = pVal(id).trim();
+        if (!val) return;
+        if (!keyFn) { memo.global = memo.global || {}; memo.global[id] = val; return; }
+        const key = keyFn();
+        if (!key) return;                       // 沒有鍵就不記，免得之後亂帶
+        memo[bucket] = memo[bucket] || {};
+        memo[bucket][key] = val;
       });
+      try { localStorage.setItem(MOMO_CODE_STORE, JSON.stringify(memo)); } catch {}
+    }
+
+    // 只填空欄位，且鍵必須對得上。對不上就維持空白，匯出時會被列進「未填」提醒。
+    function applyMomoCodeDefaults() {
+      const memo = loadMomoMemo();
+      MOMO_CODE_MEMO.forEach(([id, bucket, keyFn]) => {
+        const el = document.getElementById(id);
+        if (!el || el.value.trim()) { updateMomoMemoHint(id); return; }
+        const val = keyFn ? ((memo[bucket] || {})[keyFn()] || '') : ((memo.global || {})[id] || '');
+        if (val) el.value = val;
+        updateMomoMemoHint(id);
+      });
+    }
+
+    // 在欄位下方標出這個值是照哪把鍵帶進來的，避免帶錯了沒人發現
+    function updateMomoMemoHint(id) {
+      const hint = document.getElementById(id + '_hint');
+      if (!hint) return;
+      const row = MOMO_CODE_MEMO.find(r => r[0] === id);
+      if (!row) return;
+      const [, bucket, keyFn] = row;
+      if (!keyFn) { hint.textContent = pVal(id).trim() ? '記住為共用預設' : ''; return; }
+      const key = keyFn();
+      const memo = loadMomoMemo();
+      const known = (memo[bucket] || {})[key];
+      if (!key) { hint.textContent = ''; hint.className = 'text-xs text-gray-400 mt-1'; return; }
+      if (known && known === pVal(id).trim()) {
+        hint.textContent = `依「${key}」帶入`;
+        hint.className = 'text-xs text-green-600 mt-1';
+      } else {
+        hint.textContent = `這一筆會記在「${key}」底下`;
+        hint.className = 'text-xs text-gray-400 mt-1';
+      }
+    }
+
+    // 商品分類或規格名稱改了，對應的代碼就要重新判斷
+    function onMomoMemoKeyChange() {
+      MOMO_CODE_MEMO.forEach(([id, , keyFn]) => {
+        if (!keyFn) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        const memo = loadMomoMemo();
+        const row = MOMO_CODE_MEMO.find(r => r[0] === id);
+        const known = (memo[row[1]] || {})[keyFn()] || '';
+        // 目前的值若是舊鍵帶進來的，換鍵時要換掉，不是留著誤導
+        el.value = known;
+        updateMomoMemoHint(id);
+      });
+    }
+
+    function clearMomoMemo() {
+      if (!confirm('要清掉這台電腦記住的所有 momo 代碼對照嗎？')) return;
+      try { localStorage.removeItem(MOMO_CODE_STORE); } catch {}
+      MOMO_CODE_MEMO.forEach(([id]) => updateMomoMemoHint(id));
+      alert('已清除。');
     }
 
     // 保固說明／銷售注意事項／商品規格／商品特色內文留空時，用商品既有資料組出來，
