@@ -2198,7 +2198,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       <!-- momo 上架資料 -->
       <div class="bg-white rounded-lg shadow-md p-6 mb-6">
         <h2 class="text-xl font-semibold text-gray-700 mb-1">momo 上架資料</h2>
-        <p class="text-xs text-gray-400 mb-4">僅「匯出 momo上架格式」時使用；編號類欄位請至 momo 系統〔下載模版〕右側「編輯對照表」查詢</p>
+        <p class="text-xs text-gray-400 mb-4">「匯出 mo+上架格式」與「匯出 momo購物網格式」共用；編號類欄位請至 momo 系統〔下載模版〕右側「編輯對照表」或〔D1102 商品提報管理（批次）〕查詢</p>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">商品編碼 <span class="text-red-400">*</span></label>
@@ -2342,7 +2342,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           ⬇ 匯出 蝦皮上架格式
         </button>
         <button onclick="exportMomoXLSX()" class="bg-pink-600 text-white px-6 py-2 rounded-lg hover:bg-pink-700 font-medium">
-          ⬇ 匯出 momo上架格式
+          ⬇ 匯出 mo+上架格式
+        </button>
+        <button onclick="exportMomoShopXLSX()" class="bg-pink-800 text-white px-6 py-2 rounded-lg hover:bg-pink-900 font-medium" title="momo購物網（供應商商品提報）模板，同時產生圖片 ZIP">
+          ⬇ 匯出 momo購物網格式
         </button>
         <button onclick="clearProductForm()" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium">
           清除全部
@@ -4037,17 +4040,204 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const ws = XLSX.utils.aoa_to_sheet([MOMO_HEADER, ...rows]);
       ws['!cols'] = new Array(MOMO_HEADER.length).fill({ wch: 16 });
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-      XLSX.writeFile(wb, `${code}_momo上架.xlsx`);
+      XLSX.writeFile(wb, `${code}_mo+上架.xlsx`);
       autoSave();
 
       const momoNotes = [];
       if (!imgs.length) {
-        momoNotes.push('・momo 未選任何圖片，主圖／廣告圖／專推圖為空白（這三欄為必填）。');
+        momoNotes.push('・mo+ 未選任何圖片，主圖／廣告圖／專推圖為空白（這三欄為必填）。');
       } else if (imgs.length > 20) {
-        momoNotes.push(`・momo 專推圖最多 20 張，你選了 ${imgs.length} 張，第 21 張之後未放入。`);
+        momoNotes.push(`・mo+ 專推圖最多 20 張，你選了 ${imgs.length} 張，第 21 張之後未放入。`);
       }
-      if (momoNotes.length) alert('匯出完成，請留意：\n\n' + momoNotes.join('\n'));
+      if (momoNotes.length) alert('mo+ 匯出完成，請留意：\n\n' + momoNotes.join('\n'));
     }
+
+    // ===== momo購物網（供應商商品提報）模板：83 欄、表頭 3 列，資料自第 4 列開始 =====
+    // 內容原樣取自 momo 提供的 MOMO_Sample_1.xls，改動前請先比對新下載的模板
+    const MOMO_SHOP_NOTE = "1.商品圖檔：檔名必須以對應之商品編碼來命名。\n2.商品名稱：\n  (1)商品名稱限制50個字(包含品牌名稱)。\n  (2)若有設定品牌，則商品名稱前方會由系統自動帶入(網路)品牌名稱。\n  (3)品名禁止有相關文案如：活動名稱、活動日期、贈送××商品、代言、熱銷、與商品認知模糊之說明…等字。\n3.商品圖檔命名(範例) : 主圖、專推圖與廣告圖\n  (1)主圖：一個商品最多6張主圖，上傳方式區分為自動壓縮或手動上傳圖檔。\n   a.自動壓縮：上傳後系統自動產生中圖及小圖，一律以B圖自動壓縮\n     B圖為正方型圖檔1000*1000(50K~1000K)\n     B圖圖檔命名規則：10001_B1.jpg,10001_B2.jpg,10001_B3.jpg,10001_B4.jpg,10001_B5.jpg,10001_B6.jpg\n   b.手動上傳：各尺寸需完全符合L圖320*320(35K~150K)、X圖110*110(5K~10K)、B圖1000*1000(50K~1000K以內)、R圖640*640(50K~600K)\n     共24張圖片，圖檔命名規則：\n10001_1_L.jpg,10001_1_X.jpg,10001_1_B.jpg,10001_1_R.jpg\n10001_1_L1.jpg,10001_1_X1.jpg,10001_1_B1.jpg,10001_1_R1.jpg\n10001_1_L2.jpg,10001_1_X2.jpg,10001_1_B2.jpg,10001_1_R2.jpg\n10001_1_L3.jpg,10001_1_X3.jpg,10001_1_B3.jpg,10001_1_R3.jpg\n10001_1_L4.jpg,10001_1_X4.jpg,10001_1_B4.jpg,10001_1_R4.jpg\n10001_1_L5.jpg,10001_1_X5.jpg,10001_1_B5.jpg,10001_1_R5.jpg\n  (2)專推圖：一個商品可有多個專推圖，圖檔命名規則：10001_0_1.jpg,,10001_0_2.jpg ...\n     (可多個或無, 當無專推圖時會自動同步手機版的專推圖顯示)\n  (3)廣告圖: 一個商品最多只會有一張廣告圖，廣告圖檔命名規則：10001_O.jpg (若命名錯誤將視為「未上傳外部廣告圖」)\n  (4)手機版專推圖：一個商品可有20張手機版專推圖，圖檔命名規則：10001_m_1_1.jpg,,10001_m_1_2.jpg ...\n     (至少上傳一張手機版專推圖)\n  (5)檢驗報告書圖：一個商品可至多上傳兩張檢驗報告書圖，檢驗報告書圖檔命名規則：10001_INSP1.jpg 及 10001_INSP2.jpg\n      圖檔需長寬300px~1000px；大小500KB以內。\n  (6)規格圖：一個規格可以上傳一張規格圖，規格圖圖檔命名規則：規格1 10001_01_001_B.jpg、10001_01_002_B.jpg   規格2  10001_02_001_B.jpg、10001_02_002_B.jpg\n      圖檔需長寬1000*1000 (50K~1000K以內)\n (7)認証圖：一個商品最多只會有一張認証圖，認証圖檔命名規則：10001_PCERT.jpg \n4.商品圖檔上傳必須壓縮為ZIP檔案，且ZIP檔內不可有資料夾\n5.EC倉寄倉商品請填寫(銷售單位)的材積：甲配商品請填寫完整外箱材積(若材積填寫不正確，會造成入庫地點錯誤，倉庫將主動退回，及運費分攤計算會有差異)\n6.請注意：EC倉商品請勿提報材積超過S170(長+寬+高≧170公分以上)，重量超過20公斤之大型商品，將無法入庫。\n7.單位說明：cm=公分、kg=公斤、100公克=0.1公斤。商品尺寸(長寬高)，請填寫至四捨五入小數點1位。商品重量，請填寫至四捨五入小數點2位。\n8.重複置入館架，請依照商品分類館架置入，置入多個館架，請使用Alt+Enter分行做為系統判別。\n9.請注意： EC倉冷凍商品則請勿提報材積超過S120(長+寬+高>120公分以上)，重量超過20公斤之冷凍商品，將無法入庫。\n10.買斷付外幣供應商不需填寫台幣進價(含稅)、進價(未稅)。";
+    const MOMO_SHOP_ROW2 = ["商品編碼\n(須從 10001開始填寫)", "商品名稱", "群組促銷\n(是或否)", "是否為贈品(是或否)\n為贈品時；\n進售價須為0", "贈品MD\n(僅提報贈品時需填寫)", "置入momo直播機商品池(填寫\"是\",可在直播機的商品池內被選擇販售)", "商品分類(請至系統[D1102]商品提報管理(批次)查詢)", "業績屬性內容代碼(請至系統[D1102]商品提報管理(批次)查詢)", "(網路)品牌\n(請至系統[D1102]商品提報管理(批次)查詢)", "品牌系列 \n請至系統\n[ 商品提報管理 批次 查詢", "電子票券品牌編號\n(請至系統[H1107]品牌管理 查詢)\n(僅提報電子票券商品時需填寫)", "商品型號", "「原幣進價(僅買斷付外幣供應商需填寫)」", "台幣進價(含稅)", "進價(未稅)", "售價(含稅)", "市價", "商品來源\n(01原廠  02經銷商  03平行輸入)\n若為平行輸入則每筆商品需上傳至少一張憑證圖檔，圖檔命名原則為\n(以第一筆為例)\n10001_1_1.jpg,10001_1_2.jpg…以此類推。", "配送溫層\n(常溫、冷凍、冷藏)", "產地\n編碼\n(請至系統[D1102]商品提報管理(批次)查詢)", "商品材積\n(EC倉寄倉商品請填寫(銷售單位)\n的材積；甲配商品請填寫完整外箱材積)", "", "", "", "售後保固", "", "", "入EC倉\n(是或否)\n竹運不可選冷凍冷藏", "銷售\n單位別", "檢驗報告書\n(年/月/日 2010/01/01)", "", "設定商品指定到貨日期(是/否)", "規格1代碼\n(請至系統[D1102]商品提報管理\n(批次)查詢)", "規格2代碼\n(請至系統[D1102]商品提報管理\n(批次)查詢)", "要顯示的規格圖(規格1/規格2)\n不填代表不顯示", "單品資料\n1.顏色/花紋,尺寸，請直接輸入(如顏色輸入\"白色\")，如商品無(顏色/花紋,尺寸)，則輸入\"無\"\n2.此商品要入EC撿貨倉，如未填「國際條碼」欄位，將以該品品號代替商品條碼(入倉時需貼商品條碼) ", "", "", "", "", "", "", "", "", "", "", "", "", "", "配件", "代收代付\n(是或否)", "國旅卡設定\n(是或否)", "大型家電", "", "", "", "意見交流", "保存期限(天)\n(若商品無效期請輸入99999)", "優惠起日\n(年/月/日\n2012/09/21)", "優惠迄日\n(年/月/日\n2012/09/21)", "下架日\n(年/月/日 時:分:秒\n2012/09/21 23:59:59)", "票券信託銀行代碼\n(請至系統[D1102]商品提報管理(批次)查詢)", "出貨地代碼\n(請至系統[D1102]商品提報管理\n(批次)查詢)", "回收地代碼\n(請至系統[D1102]商品提報管理\n(批次)查詢)", "商品規格\n(食品、保健、乙類成藥、醫療器材類別商品\n請至隔頁工作表複製文案內容)", "商檢字號/NCC字號/能源效率分級", "環境用藥許可證字號/廠商名稱/環境用藥販賣業許可證", "銷售注意事項", "商品特色標語\n(限字數15字內)", "商品特色內文", "詳細介紹內文", "手機版詳細介紹內文(非必填)\n(請至隔頁工作表複製文案內容)", "商檢字號有效日期", "省水標章有效日期", "直退地址\n(請至系統[D1102]商品提報管理(批次)查詢)", "是否為免稅\n(是/否/空白)", "是否為廢四機回收\n(是/否/空白)", "是否為有政府補助\n(是/否/空白)", "是否為約定送貨\n(是/否/空白)", "一般家電", "", "", "商品影片\n請輸入影片連結的youtube id\n範例:\nhttp://www.youtube.com/WKSKKKKK123\n(請輸入紅色字體的參數即可11字元)"];
+    const MOMO_SHOP_ROW3 = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "寬cm\n公分", "長cm\n公分", "高cm\n公分", "重量kg\n公斤", "有/無", "保固天數\n(1年=365天，永久保固請輸入99999)", "保固說明", "", "", "生效起日", "生效訖日", "", "", "", "", "詳細規格1", "詳細規格2", "規格1圖片", "規格2圖片", "商品\n原廠編號", "國際條碼", "可備貨量", "首次備貨量", "最小入庫數量", "備貨天數", "指定到貨日期", "最後可接單日期", "分店名\n(規格)", "選取分店(分店編號)\n(請至系統[H1108]\n分店管理\n編碼對照表查詢)\n請輸入多筆編號時用換行方式", "", "", "", "是否含安裝\n(不是大型家電填否即可)", "回收項目", "商品分類\n(請至系統[D1102]商品提報管理(批次)查詢)", "尺寸/容量\n(請至系統[D1102]商品提報管理(批次)查詢)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "是否委由momo安裝(是/否/空白)", "商品類型\n(請至系統[D1102]商品管理(批次)查詢)", "商品規格\n(請至系統[D1102]商品管理(批次)查詢)", ""];
+    const MOMO_SHOP_MERGES = [[1, 72, 2, 72], [1, 73, 2, 73], [1, 82, 2, 82], [1, 11, 2, 11], [1, 12, 2, 12], [1, 14, 2, 14], [1, 62, 2, 62], [1, 70, 2, 70], [1, 50, 2, 50], [1, 51, 2, 51], [1, 0, 2, 0], [1, 28, 2, 28], [1, 8, 2, 8], [1, 27, 2, 27], [1, 15, 2, 15], [1, 6, 2, 6], [1, 18, 2, 18], [1, 20, 1, 23], [1, 2, 2, 2], [1, 4, 2, 4], [0, 0, 0, 79], [1, 74, 2, 74], [1, 69, 2, 69], [1, 68, 2, 68], [1, 63, 2, 63], [1, 29, 1, 30], [1, 52, 1, 55], [1, 7, 2, 7], [1, 78, 2, 78], [1, 77, 2, 77], [1, 76, 2, 76], [1, 64, 2, 64], [1, 59, 2, 59], [1, 60, 2, 60], [1, 66, 2, 66], [1, 31, 2, 31], [1, 58, 2, 58], [1, 33, 2, 33], [1, 61, 2, 61], [1, 57, 2, 57], [1, 3, 2, 3], [1, 17, 2, 17], [1, 19, 2, 19], [1, 71, 2, 71], [1, 56, 2, 56], [1, 65, 2, 65], [1, 32, 2, 32], [1, 67, 2, 67], [1, 34, 2, 34], [1, 10, 2, 10], [1, 1, 2, 1], [1, 5, 2, 5], [1, 9, 2, 9], [1, 79, 1, 81], [1, 75, 2, 75], [1, 16, 2, 16], [1, 13, 2, 13], [1, 24, 1, 26], [1, 49, 2, 49], [1, 35, 1, 48]];
+
+    // ===== momo購物網 上架格式匯出（Excel + 圖片 ZIP）=====
+    // 與 mo+ 用的是完全不同的模板：83 欄、表頭 3 列、資料自第 4 列開始，
+    // 而且沒有任何圖片網址欄位 —— 圖片一律改成 ZIP 上傳，靠檔名對應商品編碼。
+    // 進價：momo購物網要求提報進價，依約定為 售價 × 0.8（含稅），未稅再除 1.05。
+    const MOMO_COST_RATE = 0.8;
+    const MOMO_TAX_RATE  = 1.05;
+
+    // 一個規格只填「單品資料」區塊（AJ~AW），其餘欄位只出現在該商品的第一列
+    const MOMO_SHOP_VARIANT_COLS = [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48];
+
+    function momoImageExt(url) {
+      const m = decodeURIComponent(String(url).split('?')[0]).match(/\.([a-z0-9]+)$/i);
+      return m ? m[1].toLowerCase() : 'jpg';
+    }
+
+    // 從 R2 圖片網址還原 bucket 內的 key（列圖時是用 key 組回網址的，這裡反推回去）
+    function momoImageKey(url) {
+      try { return decodeURIComponent(new URL(url).pathname).replace(/^\//, ''); }
+      catch { return ''; }
+    }
+
+    // 依 momo 命名規則把選好的圖排成 ZIP 內容清單
+    function buildMomoZipList(momoCode, imgs, adImg, variants) {
+      const list = [];
+      const push = (url, name) => {
+        const key = momoImageKey(url);
+        if (key) list.push({ key, name });
+      };
+      // 主圖：自動壓縮模式只需 B 圖，最多 6 張
+      imgs.slice(0, 6).forEach((u, i) => push(u, `${momoCode}_B${i + 1}.${momoImageExt(u)}`));
+      // 廣告圖：最多 1 張，命名錯誤會被視為未上傳
+      if (adImg) push(adImg, `${momoCode}_O.${momoImageExt(adImg)}`);
+      // 手機版專推圖：至少 1 張、最多 20 張。專推圖留空時 momo 會自動同步手機版，故不重複產生
+      imgs.slice(0, 20).forEach((u, i) => push(u, `${momoCode}_m_1_${i + 1}.${momoImageExt(u)}`));
+      // 規格圖：規格1 第 n 個選項為 <編碼>_01_00n_B.jpg
+      variants.forEach((v, i) => {
+        if (v.variantImg) push(v.variantImg, `${momoCode}_01_${String(i + 1).padStart(3, '0')}_B.${momoImageExt(v.variantImg)}`);
+      });
+      return list;
+    }
+
+    async function exportMomoShopXLSX() {
+      const code = pVal('p_code').trim();
+      const name = pVal('p_name').trim();
+      if (!code || !name) { alert('請先填寫商品編號與商品名稱！'); return; }
+
+      const variants = getVariants();
+      if (variants.length === 0) { alert('請至少新增一筆規格！'); return; }
+      const errs = validateVariants(variants);
+      if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
+
+      const momoCode = pVal('p_momo_code').trim() || '10001';
+      const v0 = variants[0];
+
+      // 這份模板的售價／市價／材積都在商品層級（範本第 5 列示範的第二個規格全部留空），
+      // 規格之間若定價不同，這裡只會帶第一筆，必須明講而不是靜默取第一個。
+      const preNotes = [];
+      const uniq = (arr) => [...new Set(arr.filter(x => x !== '' && x != null))];
+      const sells = uniq(variants.map(v => String(v.sell || '')));
+      if (sells.length > 1) {
+        preNotes.push(`各規格售價不同（${sells.join('、')}），本模板售價為商品層級，只會帶入第一筆 ${sells[0]}`);
+      }
+      const dims = uniq(variants.map(v => [v.len, v.wid, v.hei, v.weight].join('/')));
+      if (dims.length > 1) preNotes.push('各規格長寬高／重量不同，本模板材積為商品層級，只會帶入第一筆');
+      if (preNotes.length && !confirm('請確認：\n\n・' + preNotes.join('\n・') + '\n\n仍要匯出嗎？')) return;
+
+      const desc  = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
+      const imgs  = getPlatformImages('momo');
+      const adImg = getPlatformImages('momoAd')[0] || '';
+      const warranty = pVal('p_momo_warranty');
+      const shipCode = pVal('p_momo_ship_code').trim();
+
+      const sell = Number(v0.sell) || 0;
+      const costIncl = sell ? Math.round(sell * MOMO_COST_RATE) : '';
+      const costExcl = sell ? Math.round(sell * MOMO_COST_RATE / MOMO_TAX_RATE) : '';
+
+      const rows = variants.map((v, idx) => {
+        const r = new Array(83).fill('');
+        r[0]  = momoCode;                          // A 商品編碼（各規格共用）
+        // 單品資料區塊：每一列都要填
+        r[35] = v.style || '無';                   // AJ 詳細規格1
+        r[36] = v.size || '無';                    // AK 詳細規格2
+        r[39] = v.vendorCode || '';                // AN 商品原廠編號
+        r[40] = v.barcode || '';                   // AO 國際條碼
+        r[41] = v.stock || '0';                    // AP 可備貨量
+        r[47] = '無';                              // AV 分店名（規格）
+        if (idx > 0) return r;                     // 第二個規格之後只填單品資料
+
+        r[1]  = name;                              // B 商品名稱
+        r[2]  = '否';                              // C 群組促銷
+        r[3]  = '否';                              // D 是否為贈品
+        r[6]  = pVal('p_momo_category').trim();    // G 商品分類
+        r[8]  = pVal('p_momo_brand').trim();       // I (網路)品牌
+        r[11] = code;                              // L 商品型號（用我們的商品編號）
+        r[13] = costIncl;                          // N 台幣進價(含稅) = 售價 × 0.8
+        r[14] = costExcl;                          // O 進價(未稅)
+        r[15] = v.sell || '';                      // P 售價(含稅)
+        r[16] = v.orig || '';                      // Q 市價
+        r[18] = pVal('p_momo_temp');               // S 配送溫層
+        r[20] = v.wid || '';                       // U 材積 寬
+        r[21] = v.len || '';                       // V 材積 長
+        r[22] = v.hei || '';                       // W 材積 高
+        r[23] = v.weight || '';                    // X 材積 重量
+        r[24] = warranty;                          // Y 售後保固
+        r[25] = warranty === '有' ? pVal('p_momo_warranty_days').trim() : '';  // Z 保固天數
+        r[27] = '否';                              // AB 入EC倉
+        r[28] = '無';                              // AC 銷售單位別
+        r[31] = '否';                              // AF 設定商品指定到貨日期
+        r[34] = variants.some(x => x.variantImg) ? '規格1' : '';  // AI 要顯示的規格圖
+        r[50] = '否';                              // AY 代收代付
+        r[51] = '否';                              // AZ 國旅卡設定
+        r[52] = '否';                              // BA 大型家電 是否含安裝
+        r[56] = '無';                              // BE 意見交流
+        r[62] = shipCode;                          // BK 出貨地代碼
+        r[63] = shipCode;                          // BL 回收地代碼
+        r[68] = pVal('p_highlight').trim();        // BQ 商品特色標語（限15字）
+        r[70] = desc;                              // BS 詳細介紹內文
+        return r;
+      });
+
+      const wb = XLSX.utils.book_new();
+      const noteRow = new Array(83).fill('');
+      noteRow[0] = MOMO_SHOP_NOTE;
+      const ws = XLSX.utils.aoa_to_sheet([noteRow, MOMO_SHOP_ROW2, MOMO_SHOP_ROW3, ...rows]);
+      ws['!cols'] = new Array(83).fill({ wch: 16 });
+      ws['!merges'] = MOMO_SHOP_MERGES.map(([sr, sc, er, ec]) => ({ s: { r: sr, c: sc }, e: { r: er, c: ec } }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      XLSX.writeFile(wb, `${code}_momo購物網上架.xlsx`);
+      autoSave();
+
+      const notes = [];
+      // 沒填就是空白，這些欄位 momo 多半會擋，逐一列出讓人工補
+      const blanks = [];
+      if (!r0(rows, 6))  blanks.push('商品分類(G)');
+      if (!r0(rows, 8))  blanks.push('(網路)品牌(I)');
+      if (!r0(rows, 62)) blanks.push('出貨地／回收地代碼(BK/BL)');
+      blanks.push('業績屬性內容代碼(H)', '產地編碼(T)', '商品來源(R)', '規格1／規格2代碼(AG/AH)');
+      notes.push('・以下欄位未帶入，請在 Excel 補（代碼類需至 momo〔D1102 商品提報管理（批次）〕查詢）：\n    ' + blanks.join('、'));
+      notes.push(`・進價依約定帶入：台幣進價(含稅) ${costIncl || '—'}、進價(未稅) ${costExcl || '—'}（售價 × ${MOMO_COST_RATE}，未稅再除 ${MOMO_TAX_RATE}）`);
+      if (pVal('p_highlight').trim().length > 15) {
+        notes.push(`・商品特色標語限 15 字，目前 ${pVal('p_highlight').trim().length} 字，請自行縮短。`);
+      }
+
+      // 圖片：這份模板沒有網址欄位，改由 worker 從 R2 取檔改名打包
+      const zipList = buildMomoZipList(momoCode, imgs, adImg, variants);
+      if (!zipList.length) {
+        notes.push('・未選任何圖片，沒有產生圖片 ZIP。momo 規定至少要有 1 張手機版專推圖。');
+      } else {
+        try {
+          const res = await fetch(`${WORKER_URL}/api/zip`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: zipList }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${res.status}`);
+          }
+          const missing = Number(res.headers.get('X-Zip-Missing') || 0);
+          const blob = await res.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `${momoCode}_momo圖片.zip`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+          notes.push(`・圖片 ZIP 已下載：${zipList.length - missing} 個檔案（主圖 ${Math.min(imgs.length, 6)}、廣告圖 ${adImg ? 1 : 0}、手機版專推圖 ${Math.min(imgs.length, 20)}、規格圖 ${variants.filter(v => v.variantImg).length}）`);
+          if (missing) notes.push(`・有 ${missing} 個檔案在 R2 讀不到，未放進 ZIP，請確認圖片路徑。`);
+          notes.push('・momo 對圖片尺寸有硬性規定（主圖 1000×1000、50K~1000K），本工具只改檔名不縮圖，請自行確認來源圖規格。');
+        } catch (e) {
+          notes.push(`・圖片 ZIP 產生失敗：${e.message}（worker 需先部署 /api/zip）`);
+        }
+      }
+      alert('momo購物網 匯出完成，請留意：\n\n' + notes.join('\n'));
+    }
+
+    // 取第一列（商品層級那列）某欄的值
+    function r0(rows, i) { return String((rows[0] || [])[i] || '').trim(); }
 
     // ===== 匯入 USALE 商品資料 =====
     // 來源為 USALE 匯出的「商品資料」工作表，一列一個規格，以商品編號歸群為商品。

@@ -1,3 +1,66 @@
+// ===== 無相依的 ZIP 打包（STORE，不壓縮）=====
+// 圖片本來就是壓過的格式，deflate 幾乎沒有收益，換來的是零 npm 相依、
+// 這支 worker 仍可用 Cloudflare 後台編輯器直接貼上。
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function buildZip(entries) {
+  const enc = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+
+  const push = (arr) => { chunks.push(arr); offset += arr.length; };
+  const u16 = (v) => new Uint8Array([v & 0xFF, (v >>> 8) & 0xFF]);
+  const u32 = (v) => new Uint8Array([v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF]);
+  const cat = (...parts) => {
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const out = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.length; }
+    return out;
+  };
+
+  for (const e of entries) {
+    const nameBytes = enc.encode(e.name);
+    const data = e.data;
+    const crc = crc32(data);
+    const localAt = offset;
+    // 一律標記 UTF-8 檔名（bit 11），時間戳固定為 1980/01/01 讓輸出可重現
+    push(cat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x0021),
+             u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length), u16(0), nameBytes));
+    push(data);
+    central.push(cat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x0021),
+                     u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length),
+                     u16(0), u16(0), u16(0), u16(0), u32(0), u32(localAt), nameBytes));
+  }
+
+  const centralAt = offset;
+  for (const c of central) push(c);
+  const centralSize = offset - centralAt;
+  push(cat(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length),
+           u32(centralSize), u32(centralAt), u16(0)));
+
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
+  return out;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -6,6 +69,7 @@ export default {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Expose-Headers': 'X-Zip-Count, X-Zip-Missing',
     };
 
     if (request.method === 'OPTIONS') {
@@ -63,6 +127,58 @@ export default {
 
         return new Response(JSON.stringify({ prefix, count: keys.length, keys }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // POST /api/zip — 依 { files: [{ key, name }] } 從 shaner-assets 取檔並打包成 ZIP
+    // momo購物網的圖片不是填網址，而是整包 ZIP 上傳、靠檔名對應商品編碼，所以改名的工作在這裡做。
+    if (request.method === 'POST' && url.pathname === '/api/zip') {
+      try {
+        const body = await request.json();
+        const files = Array.isArray(body.files) ? body.files : [];
+        if (!files.length) {
+          return new Response(JSON.stringify({ error: 'files 為空' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        if (files.length > 200) {
+          return new Response(JSON.stringify({ error: `一次最多 200 個檔案，收到 ${files.length}` }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const entries = [];
+        const missing = [];
+        for (const f of files) {
+          const key = String(f.key || '');
+          // ZIP 內不可有資料夾（momo 規定），檔名一律取最後一段
+          const name = String(f.name || '').split('/').pop();
+          if (!key || !name) continue;
+          const obj = await env.ASSETS_BUCKET.get(key);
+          if (!obj) { missing.push(key); continue; }
+          entries.push({ name, data: new Uint8Array(await obj.arrayBuffer()) });
+        }
+        if (!entries.length) {
+          return new Response(JSON.stringify({ error: '所有檔案都讀不到', missing }), {
+            status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const zip = buildZip(entries);
+        return new Response(zip, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/zip',
+            'Content-Length': String(zip.length),
+            // 讀不到的檔案不能靜默吞掉，用 header 回報讓前端提醒使用者
+            'X-Zip-Count': String(entries.length),
+            'X-Zip-Missing': String(missing.length),
+          },
         });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), {
