@@ -69,7 +69,7 @@ export default {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Expose-Headers': 'X-Zip-Count, X-Zip-Missing',
+      'Access-Control-Expose-Headers': 'X-Zip-Count, X-Zip-Missing, X-Zip-Report',
     };
 
     if (request.method === 'OPTIONS') {
@@ -135,8 +135,10 @@ export default {
       }
     }
 
-    // POST /api/zip — 依 { files: [{ key, name }] } 從 shaner-assets 取檔並打包成 ZIP
+    // POST /api/zip — 依 { files: [{ key, name, w, h }] } 取檔、（可選）裁切後打包成 ZIP
     // momo購物網的圖片不是填網址，而是整包 ZIP 上傳、靠檔名對應商品編碼，所以改名的工作在這裡做。
+    // 帶 w/h 時走 Cloudflare 的 cf.image 裁切：來源必須是「原檔」網域（photos.*），
+    // 打 img.* 會再進到轉檔 worker 造成迴圈，這點與該 worker 的做法一致。
     if (request.method === 'POST' && url.pathname === '/api/zip') {
       try {
         const body = await request.json();
@@ -152,16 +154,38 @@ export default {
           });
         }
 
+        const IMAGE_ORIGIN = (env.IMAGE_ORIGIN || 'https://photos.shaner.com.tw').replace(/\/+$/, '');
         const entries = [];
         const missing = [];
+        const report = [];
         for (const f of files) {
           const key = String(f.key || '');
           // ZIP 內不可有資料夾（momo 規定），檔名一律取最後一段
           const name = String(f.name || '').split('/').pop();
           if (!key || !name) continue;
-          const obj = await env.ASSETS_BUCKET.get(key);
-          if (!obj) { missing.push(key); continue; }
-          entries.push({ name, data: new Uint8Array(await obj.arrayBuffer()) });
+
+          let data = null;
+          let resized = false;
+          const w = Number(f.w) || 0;
+          const h = Number(f.h) || 0;
+          if (w && h) {
+            try {
+              const res = await fetch(`${IMAGE_ORIGIN}/${encodeURI(key)}`, {
+                cf: { image: { width: w, height: h, fit: 'cover', format: 'jpeg', quality: 90 } },
+              });
+              if (res.ok) {
+                data = new Uint8Array(await res.arrayBuffer());
+                resized = true;
+              }
+            } catch { /* 裁切失敗就退回原圖，不讓整包失敗 */ }
+          }
+          if (!data) {
+            const obj = await env.ASSETS_BUCKET.get(key);
+            if (!obj) { missing.push(key); continue; }
+            data = new Uint8Array(await obj.arrayBuffer());
+          }
+          entries.push({ name, data });
+          report.push({ name, size: data.length, resized });
         }
         if (!entries.length) {
           return new Response(JSON.stringify({ error: '所有檔案都讀不到', missing }), {
@@ -178,6 +202,8 @@ export default {
             // 讀不到的檔案不能靜默吞掉，用 header 回報讓前端提醒使用者
             'X-Zip-Count': String(entries.length),
             'X-Zip-Missing': String(missing.length),
+            // 每個檔的實際大小與是否裁切過，讓前端能檢查 momo 的檔案大小限制
+            'X-Zip-Report': btoa(JSON.stringify(report)),
           },
         });
       } catch (e) {

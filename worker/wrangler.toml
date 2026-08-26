@@ -10,3 +10,7 @@ bucket_name = "label-sticker"
 [[r2_buckets]]
 binding = "ASSETS_BUCKET"
 bucket_name = "shaner-assets"
+
+[vars]
+# cf.image 裁切的來源網域：必須是原檔網域，打 img.* 會進到轉檔 worker 造成迴圈
+IMAGE_ORIGIN = "https://photos.shaner.com.tw"

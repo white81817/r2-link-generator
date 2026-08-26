@@ -2261,6 +2261,52 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input id="p_momo_warranty_days" type="number" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="保固「有」時必填">
           </div>
         </div>
+
+        <h3 class="text-sm font-bold text-gray-600 mt-6 mb-1">momo購物網專用</h3>
+        <p class="text-xs text-gray-400 mb-3">
+          代碼類欄位無法從 momo 匯出對照表，需在後台〔D1102 商品提報管理（批次）〕的下拉／搜尋查到後填一次。
+          填過的值會記在這台電腦，之後新商品自動帶入，不用每次重查。
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">業績屬性內容代碼</label>
+            <input id="p_momo_perf_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="A001G001C001">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">產地編碼</label>
+            <input id="p_momo_origin_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="0886">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">規格1代碼</label>
+            <input id="p_momo_spec1_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="001">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">規格2代碼</label>
+            <input id="p_momo_spec2_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="002">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">保存期限（天）</label>
+            <input id="p_momo_shelf_life" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="無效期填 99999">
+          </div>
+          <div class="md:col-span-3">
+            <label class="block text-sm font-bold text-gray-700 mb-1">圖片處理
+              <span class="text-gray-400 font-normal text-xs ml-1">打包 ZIP 時是否照 momo 規格重新裁切</span></label>
+            <select id="p_momo_img_resize" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="1">自動裁成 momo 規格（主圖／廣告圖／規格圖 1000×1000 JPEG）</option>
+              <option value="0">直接打包原圖（不裁切）</option>
+            </select>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-bold text-gray-700 mb-1">保固說明
+              <span class="text-gray-400 font-normal text-xs ml-1">留空自動由保固天數帶入</span></label>
+            <textarea id="p_momo_warranty_note" rows="2" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="留空自動產生"></textarea>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-bold text-gray-700 mb-1">銷售注意事項
+              <span class="text-gray-400 font-normal text-xs ml-1">留空自動由標籤與規格帶入</span></label>
+            <textarea id="p_momo_sale_note" rows="2" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="留空自動產生"></textarea>
+          </div>
+        </div>
       </div>
 
       <!-- 規格與庫存 -->
@@ -3730,6 +3776,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       p_momo_temp: '常溫', p_momo_cvs: '無', p_momo_3pl: '有', p_momo_own: '無',
       p_momo_ship_code: '',
       p_momo_warranty: '無', p_momo_warranty_days: '',
+      // momo購物網專用
+      p_momo_perf_code: '', p_momo_origin_code: '', p_momo_spec1_code: '', p_momo_spec2_code: '',
+      p_momo_shelf_life: '', p_momo_img_resize: '1',
+      p_momo_warranty_note: '', p_momo_sale_note: '',
     };
 
     function collectMomoData() {
@@ -3745,6 +3795,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const v = data && data[id];
         el.value = (v === undefined || v === null || v === '') ? def : v;
       });
+      // 代碼類欄位查一次很費工，商品本身沒存值時用這台電腦上次填的補上
+      applyMomoCodeDefaults();
     }
 
     // ===== 蝦皮商品分類（取自蝦皮模板「較長備貨天數範圍」工作表，2088 個分類）=====
@@ -4080,24 +4132,83 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       catch { return ''; }
     }
 
+    // momo 對 B 圖類（主圖／廣告圖／規格圖）要求 1000×1000；手機版專推圖沒有硬性尺寸，
+    // 長圖裁成正方形只會毀掉版面，所以那類一律原圖打包。
+    const MOMO_SQUARE = 1000;
+
     // 依 momo 命名規則把選好的圖排成 ZIP 內容清單
-    function buildMomoZipList(momoCode, imgs, adImg, variants) {
+    // resize 為真時，需要裁切的檔案帶上 w/h，worker 會用 cf.image 轉成 1000×1000 JPEG
+    function buildMomoZipList(momoCode, imgs, adImg, variants, resize) {
       const list = [];
-      const push = (url, name) => {
+      const push = (url, base, square) => {
         const key = momoImageKey(url);
-        if (key) list.push({ key, name });
+        if (!key) return;
+        const crop = square && resize;
+        // 裁切後一律輸出 JPEG，副檔名要跟著換，否則 momo 認不得
+        const item = { key, name: `${base}.${crop ? 'jpg' : momoImageExt(url)}` };
+        if (crop) { item.w = MOMO_SQUARE; item.h = MOMO_SQUARE; }
+        list.push(item);
       };
       // 主圖：自動壓縮模式只需 B 圖，最多 6 張
-      imgs.slice(0, 6).forEach((u, i) => push(u, `${momoCode}_B${i + 1}.${momoImageExt(u)}`));
+      imgs.slice(0, 6).forEach((u, i) => push(u, `${momoCode}_B${i + 1}`, true));
       // 廣告圖：最多 1 張，命名錯誤會被視為未上傳
-      if (adImg) push(adImg, `${momoCode}_O.${momoImageExt(adImg)}`);
+      if (adImg) push(adImg, `${momoCode}_O`, true);
       // 手機版專推圖：至少 1 張、最多 20 張。專推圖留空時 momo 會自動同步手機版，故不重複產生
-      imgs.slice(0, 20).forEach((u, i) => push(u, `${momoCode}_m_1_${i + 1}.${momoImageExt(u)}`));
+      imgs.slice(0, 20).forEach((u, i) => push(u, `${momoCode}_m_1_${i + 1}`, false));
       // 規格圖：規格1 第 n 個選項為 <編碼>_01_00n_B.jpg
       variants.forEach((v, i) => {
-        if (v.variantImg) push(v.variantImg, `${momoCode}_01_${String(i + 1).padStart(3, '0')}_B.${momoImageExt(v.variantImg)}`);
+        if (v.variantImg) push(v.variantImg, `${momoCode}_01_${String(i + 1).padStart(3, '0')}_B`, true);
       });
       return list;
+    }
+
+    // 代碼類欄位查一次很費工，填過就記在本機，下一個商品自動帶入
+    const MOMO_CODE_FIELDS = ['p_momo_perf_code', 'p_momo_origin_code', 'p_momo_spec1_code',
+                              'p_momo_spec2_code', 'p_momo_shelf_life', 'p_momo_ship_code'];
+    const MOMO_CODE_STORE = 'momoCodeDefaults_v1';
+
+    function rememberMomoCodes() {
+      const d = {};
+      MOMO_CODE_FIELDS.forEach(id => { const v = pVal(id).trim(); if (v) d[id] = v; });
+      try { localStorage.setItem(MOMO_CODE_STORE, JSON.stringify(d)); } catch {}
+    }
+
+    function applyMomoCodeDefaults() {
+      let d = {};
+      try { d = JSON.parse(localStorage.getItem(MOMO_CODE_STORE) || '{}'); } catch {}
+      MOMO_CODE_FIELDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.value.trim() && d[id]) el.value = d[id];
+      });
+    }
+
+    // 保固說明／銷售注意事項／商品規格／商品特色內文留空時，用商品既有資料組出來，
+    // 免得每個商品都要重打一次同樣的話。
+    function momoAutoText(variants, opt1, opt2) {
+      const warranty = pVal('p_momo_warranty');
+      const days = pVal('p_momo_warranty_days').trim();
+      const v0 = variants[0] || {};
+      const tags = Array.from(document.querySelectorAll('#p_tags .tag-cb'))
+        .filter(cb => cb.checked).map(cb => cb.value);
+
+      const warrantyNote = warranty === '有'
+        ? `保固 ${days || '—'} 天，非人為損壞之瑕疵可於保固期內申請維修或更換；人為損壞、自行拆解、正常磨損不在保固範圍。`
+        : '本商品不提供保固，如收到商品有瑕疵請於七日內聯繫客服。';
+
+      const specLines = [`商品名稱：${pVal('p_name').trim()}`];
+      const combos = variants.map(v => [v.style, v.size].filter(x => x && x !== '無').join(' / ')).filter(Boolean);
+      if (combos.length) specLines.push(`${opt1}／${opt2}：${combos.join('、')}`);
+      if (v0.len && v0.wid && v0.hei) specLines.push(`商品尺寸：長 ${v0.len} x 寬 ${v0.wid} x 高 ${v0.hei} cm`);
+      if (v0.weight) specLines.push(`商品重量：${v0.weight} kg`);
+      if (tags.length) specLines.push(`商品標籤：${tags.join('、')}`);
+
+      const saleNote = [
+        '‧商品尺寸為人工測量，可能有 1~3 cm 誤差，屬正常範圍。',
+        '‧因拍攝光線與螢幕色差，實際顏色以收到商品為準。',
+        '‧鑑賞期非試用期，退換貨請保持商品與包裝完整。',
+      ].join('\n');
+
+      return { warrantyNote, spec: specLines.join('\n'), saleNote };
     }
 
     async function exportMomoShopXLSX() {
@@ -4131,6 +4242,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const warranty = pVal('p_momo_warranty');
       const shipCode = pVal('p_momo_ship_code').trim();
 
+      const opt1 = pVal('opt1_name') || '樣式';
+      const opt2 = pVal('opt2_name') || '尺寸';
+      const autoText = momoAutoText(variants, opt1, opt2);
+      const auto = {
+        warrantyNote: pVal('p_momo_warranty_note').trim() || autoText.warrantyNote,
+        spec:         autoText.spec,
+        saleNote:     autoText.saleNote,
+      };
+      rememberMomoCodes();
+
       const sell = Number(v0.sell) || 0;
       const costIncl = sell ? Math.round(sell * MOMO_COST_RATE) : '';
       const costExcl = sell ? Math.round(sell * MOMO_COST_RATE / MOMO_TAX_RATE) : '';
@@ -4157,24 +4278,34 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[14] = costExcl;                          // O 進價(未稅)
         r[15] = v.sell || '';                      // P 售價(含稅)
         r[16] = v.orig || '';                      // Q 市價
+        r[7]  = pVal('p_momo_perf_code').trim();   // H 業績屬性內容代碼
+        r[17] = '01';                              // R 商品來源（一律 01原廠）
         r[18] = pVal('p_momo_temp');               // S 配送溫層
+        r[19] = pVal('p_momo_origin_code').trim(); // T 產地編碼
         r[20] = v.wid || '';                       // U 材積 寬
         r[21] = v.len || '';                       // V 材積 長
         r[22] = v.hei || '';                       // W 材積 高
         r[23] = v.weight || '';                    // X 材積 重量
         r[24] = warranty;                          // Y 售後保固
         r[25] = warranty === '有' ? pVal('p_momo_warranty_days').trim() : '';  // Z 保固天數
+        r[26] = auto.warrantyNote;                 // AA 保固說明
         r[27] = '否';                              // AB 入EC倉
         r[28] = '無';                              // AC 銷售單位別
         r[31] = '否';                              // AF 設定商品指定到貨日期
+        r[32] = pVal('p_momo_spec1_code').trim();  // AG 規格1代碼
+        r[33] = pVal('p_momo_spec2_code').trim();  // AH 規格2代碼
         r[34] = variants.some(x => x.variantImg) ? '規格1' : '';  // AI 要顯示的規格圖
         r[50] = '否';                              // AY 代收代付
         r[51] = '否';                              // AZ 國旅卡設定
         r[52] = '否';                              // BA 大型家電 是否含安裝
         r[56] = '無';                              // BE 意見交流
+        r[57] = pVal('p_momo_shelf_life').trim() || '99999';  // BF 保存期限（無效期為 99999）
         r[62] = shipCode;                          // BK 出貨地代碼
         r[63] = shipCode;                          // BL 回收地代碼
+        r[64] = auto.spec;                         // BM 商品規格
+        r[67] = pVal('p_momo_sale_note').trim() || auto.saleNote;  // BP 銷售注意事項
         r[68] = pVal('p_highlight').trim();        // BQ 商品特色標語（限15字）
+        r[69] = pVal('p_description').trim();      // BR 商品特色內文
         r[70] = desc;                              // BS 詳細介紹內文
         return r;
       });
@@ -4195,15 +4326,21 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (!r0(rows, 6))  blanks.push('商品分類(G)');
       if (!r0(rows, 8))  blanks.push('(網路)品牌(I)');
       if (!r0(rows, 62)) blanks.push('出貨地／回收地代碼(BK/BL)');
-      blanks.push('業績屬性內容代碼(H)', '產地編碼(T)', '商品來源(R)', '規格1／規格2代碼(AG/AH)');
-      notes.push('・以下欄位未帶入，請在 Excel 補（代碼類需至 momo〔D1102 商品提報管理（批次）〕查詢）：\n    ' + blanks.join('、'));
+      if (!r0(rows, 7))  blanks.push('業績屬性內容代碼(H)');
+      if (!r0(rows, 19)) blanks.push('產地編碼(T)');
+      if (!r0(rows, 32)) blanks.push('規格1代碼(AG)');
+      if (!r0(rows, 33)) blanks.push('規格2代碼(AH)');
+      if (blanks.length) {
+        notes.push('・以下欄位未填，Excel 內為空白（代碼類請至 momo〔D1102 商品提報管理（批次）〕查到後填進表單，之後會自動記住）：\n    ' + blanks.join('、'));
+      }
       notes.push(`・進價依約定帶入：台幣進價(含稅) ${costIncl || '—'}、進價(未稅) ${costExcl || '—'}（售價 × ${MOMO_COST_RATE}，未稅再除 ${MOMO_TAX_RATE}）`);
       if (pVal('p_highlight').trim().length > 15) {
         notes.push(`・商品特色標語限 15 字，目前 ${pVal('p_highlight').trim().length} 字，請自行縮短。`);
       }
 
       // 圖片：這份模板沒有網址欄位，改由 worker 從 R2 取檔改名打包
-      const zipList = buildMomoZipList(momoCode, imgs, adImg, variants);
+      const resize = pVal('p_momo_img_resize') !== '0';
+      const zipList = buildMomoZipList(momoCode, imgs, adImg, variants, resize);
       if (!zipList.length) {
         notes.push('・未選任何圖片，沒有產生圖片 ZIP。momo 規定至少要有 1 張手機版專推圖。');
       } else {
@@ -4228,7 +4365,21 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           setTimeout(() => URL.revokeObjectURL(a.href), 10000);
           notes.push(`・圖片 ZIP 已下載：${zipList.length - missing} 個檔案（主圖 ${Math.min(imgs.length, 6)}、廣告圖 ${adImg ? 1 : 0}、手機版專推圖 ${Math.min(imgs.length, 20)}、規格圖 ${variants.filter(v => v.variantImg).length}）`);
           if (missing) notes.push(`・有 ${missing} 個檔案在 R2 讀不到，未放進 ZIP，請確認圖片路徑。`);
-          notes.push('・momo 對圖片尺寸有硬性規定（主圖 1000×1000、50K~1000K），本工具只改檔名不縮圖，請自行確認來源圖規格。');
+
+          // momo 對 B 圖有 50K~1000K 的硬性限制，裁完仍可能落在範圍外，逐檔檢查而不是含糊帶過
+          let report = [];
+          try { report = JSON.parse(atob(res.headers.get('X-Zip-Report') || '')) || []; } catch {}
+          if (resize) {
+            const notCropped = report.filter(f => /_B\d*\.jpg$|_O\.jpg$|_B\.jpg$/.test(f.name) && !f.resized);
+            if (notCropped.length) notes.push(`・有 ${notCropped.length} 張裁切失敗，已改用原圖打包：${notCropped.map(f => f.name).join('、')}`);
+          } else {
+            notes.push('・你選了「直接打包原圖」，momo 規定主圖須為 1000×1000、50K~1000K，請自行確認。');
+          }
+          const bad = report.filter(f => /_B\d*\.jpg$|_O\.jpg$|_B\.jpg$/.test(f.name) && (f.size < 50 * 1024 || f.size > 1000 * 1024));
+          if (bad.length) {
+            notes.push('・下列圖檔大小不在 momo 要求的 50K~1000K 內，可能被退件：\n    ' +
+              bad.map(f => `${f.name} ${(f.size / 1024).toFixed(0)}K`).join('、'));
+          }
         } catch (e) {
           notes.push(`・圖片 ZIP 產生失敗：${e.message}（worker 需先部署 /api/zip）`);
         }
