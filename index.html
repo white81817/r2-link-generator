@@ -2762,7 +2762,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     // ===== 商品編號／品項條碼規則 =====
     //   SH 0S 0001 00
-    //   ├倉庫 ├材積 ├四位流水號 └兩位規格流水號（第一個規格是 00）
+    //   ├倉庫 ├材積 ├四位流水號 └兩位規格流水號（00 是商品本身，規格從 01 起）
     const CODE_WAREHOUSES = { SH: '五權倉', CF: '五工倉' };
     const CODE_SIZES = { '0S': '0～2才', '1S': '2才以上' };
     const CODE_RE = /^(SH|CF)([01]S)(\d{4})00$/;
@@ -2781,9 +2781,22 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (row.dataset.noauto || barcodeEl.dataset.manual) return;
       const parsed = parseProductCode(pVal('p_code'));
       if (!parsed) return;
-      const seq = parseInt(row.dataset.idx, 10) - 1;   // 第一列 → 00
+
+      // 規格流水號從 01 起算（00 是商品本身）。
+      // 直接用列序會有一種撞號情形：舊商品的條碼是鎖住不動的，若它已經佔用了
+      // 01、03，中間刪一列之後新增的列剛好排到 03 就會重複。所以往後找到空的為止。
+      const base = parsed.prefix + parsed.serial;
+      const taken = new Set();
+      document.querySelectorAll('#variantRows tr').forEach(r => {
+        if (r === row) return;
+        const v = r.querySelector('.v-barcode').value.trim().toUpperCase();
+        if (v.startsWith(base)) taken.add(v.slice(base.length));
+      });
+
+      let seq = parseInt(row.dataset.idx, 10);
+      while (seq <= 99 && taken.has(String(seq).padStart(2, '0'))) seq++;
       if (seq > 99) return;
-      barcodeEl.value = parsed.prefix + parsed.serial + String(seq).padStart(2, '0');
+      barcodeEl.value = base + String(seq).padStart(2, '0');
       calcVariant(row);
     }
 
