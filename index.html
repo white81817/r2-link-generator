@@ -7151,8 +7151,16 @@ ${co.bank?`<div class="bank">
       if (!shareToken) { alert('請先到「產品建立」分頁的共用商品庫連線'); return; }
       comboEditing = { id: '', name: '', style: '', size: COMBO_DEFAULT_SIZE, sell: '', shopeeSell: '', members: [] };
       fillComboForm();
-      document.getElementById('comboEditBox').classList.remove('hidden');
+      showComboEditBox();
       document.getElementById('c_id_hint').textContent = '選好成員後會自動產生編號';
+      document.getElementById('c_name').focus();
+    }
+
+    // 編輯區在清單下方，清單長的時候按了按鈕會像沒反應——捲過去並聚焦
+    function showComboEditBox() {
+      const box = document.getElementById('comboEditBox');
+      box.classList.remove('hidden');
+      box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     async function editCombo(id) {
@@ -7166,7 +7174,7 @@ ${co.bank?`<div class="bank">
         byProduct: c.byProduct || {}, hiddenFor: c.hiddenFor || [],
       };
       fillComboForm();
-      document.getElementById('comboEditBox').classList.remove('hidden');
+      showComboEditBox();
       document.getElementById('c_id_hint').textContent = '';
     }
 
