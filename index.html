@@ -2454,6 +2454,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <button onclick="exportInventoryXLS()" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium">
           ⬇ 匯出 USALE建立範本
         </button>
+        <button onclick="exportCombosOfProduct()" class="bg-green-700 text-white px-6 py-2 rounded-lg hover:bg-green-800 font-medium" title="匯出這個商品規格表上的複合規格，格式為 USALE 的「批次修改複合商品資料」">
+          ⬇ 匯出 複合商品
+        </button>
         <button onclick="exportWebsiteXLSX()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">
           ⬇ 匯出 1shop上架格式
         </button>
@@ -5428,6 +5431,89 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // 取第一列（商品層級那列）某欄的值
     function r0(rows, i) { return String((rows[0] || [])[i] || '').trim(); }
 
+    // ===== 複合商品匯出（USALE 批次修改複合商品資料）=====
+    // 一列一個成員，數量用重複列表示（跟匯入格式一致）。
+    // 這五個欄位使用者指定固定值，不開放逐筆設定。
+    const COMBO_EXPORT_HEADER = ['複合編號', '複合名稱', '複合類型(多選/福袋)', '售價模式(系統/通路)', '售價',
+      '售價分配(平均分配/依比例分配/不分配)', '任選件數(多選類型)', '群組編號(多選)', '商品編號', '樣式', '尺寸'];
+    const COMBO_EXPORT_FIXED = { type: '福袋', priceMode: '通路', priceAlloc: '依比例分配', pickCount: 1, groupNo: 1 };
+
+    function comboExportRows(combos) {
+      const index = buildItemIndex();
+      const rows = [];
+      combos.forEach(c => {
+        (c.members || []).forEach(m => {
+          const { hit } = resolveComboMember(m, index);
+          // 成員的商品編號優先用當初記錄的那組，對不到才退回條碼
+          const memberCode = m.code || m.barcode || '';
+          const style = hit ? (hit.variant.style || 'F') : (m.style || 'F');
+          const size  = hit ? (hit.variant.size  || 'F') : (m.size  || 'F');
+          const qty = Math.max(1, parseInt(m.qty, 10) || 1);
+          for (let i = 0; i < qty; i++) {
+            rows.push([
+              c.id, c.name || '', COMBO_EXPORT_FIXED.type, COMBO_EXPORT_FIXED.priceMode,
+              c.sell === '' || c.sell == null ? '' : Number(c.sell),
+              COMBO_EXPORT_FIXED.priceAlloc, COMBO_EXPORT_FIXED.pickCount, COMBO_EXPORT_FIXED.groupNo,
+              memberCode, style, size,
+            ]);
+          }
+        });
+      });
+      return rows;
+    }
+
+    function writeComboExport(combos, filename) {
+      const rows = comboExportRows(combos);
+      if (!rows.length) { alert('沒有可匯出的成員資料'); return false; }
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([COMBO_EXPORT_HEADER, ...rows]);
+      ws['!cols'] = [14, 28, 16, 16, 10, 24, 16, 14, 16, 10, 10].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, '批次修改複合商品資料');
+      XLSX.writeFile(wb, filename);
+      return rows.length;
+    }
+
+    // 依 id 取回完整資料（清單摘要沒有成員明細）
+    async function fetchCombos(ids) {
+      const out = [];
+      for (let i = 0; i < ids.length; i += 20) {
+        const part = await Promise.all(ids.slice(i, i + 20).map(async (id) => {
+          const { ok, data } = await shareApi(`/api/combos/${encodeURIComponent(id)}`);
+          return ok ? data.combo : null;
+        }));
+        out.push(...part.filter(Boolean));
+      }
+      return out;
+    }
+
+    // 複合商品分頁：匯出目前篩選出來的
+    async function exportCombosFiltered() {
+      if (!shareToken) { alert('請先連線共用商品庫'); return; }
+      const kw = (document.getElementById('comboListSearch').value || '').trim();
+      const shown = comboList.filter(it => matchKeywords(`${it.id} ${it.name || ''}`, kw));
+      if (!shown.length) { alert('目前沒有符合的複合商品'); return; }
+      if (shown.length > 200 && !confirm(`要匯出 ${shown.length} 個複合商品嗎？筆數多時會跑一段時間。`)) return;
+
+      const btn = document.getElementById('comboExportBtn');
+      if (btn) { btn.disabled = true; btn.textContent = '匯出中…'; }
+      const combos = await fetchCombos(shown.map(x => x.id));
+      const n = writeComboExport(combos, `複合商品_${shown.length}筆.xlsx`);
+      if (btn) { btn.disabled = false; btn.textContent = '⬇ 匯出複合商品'; }
+      if (n) alert(`已匯出 ${combos.length} 個複合商品，共 ${n} 列成員資料。`);
+    }
+
+    // 產品建立：匯出這個商品目前規格表上的複合規格
+    async function exportCombosOfProduct() {
+      if (!shareToken) { alert('請先連線共用商品庫'); return; }
+      const ids = [...document.querySelectorAll('#variantRows tr')]
+        .map(tr => tr.dataset.comboRef).filter(Boolean);
+      if (!ids.length) { alert('這個商品的規格表上沒有複合規格\n（新建的複合規格要先按儲存才會建立）'); return; }
+      const combos = await fetchCombos([...new Set(ids)]);
+      const code = pVal('p_code').trim() || '複合商品';
+      const n = writeComboExport(combos, `${code}_複合商品.xlsx`);
+      if (n) alert(`已匯出 ${combos.length} 個複合商品，共 ${n} 列成員資料。`);
+    }
+
     // ===== 匯入 USALE 複合商品資料 =====
     // 來源是 USALE 的「複合商品資料」工作表：一列一個成員，靠複合編號歸群。
     // 同一個成員重複出現代表數量（USALE 沒有數量欄位，是用重複列表示的）。
@@ -7327,6 +7413,7 @@ ${co.bank?`<div class="bank">
           <button onclick="newCombo()" class="bg-indigo-600 text-white text-sm px-4 py-1.5 rounded hover:bg-indigo-700">＋ 新增複合商品</button>
           <input id="comboListSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋編號或名稱" oninput="resetComboPage()">
           <button onclick="refreshComboList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
+          <button id="comboExportBtn" onclick="exportCombosFiltered()" class="text-xs bg-green-600 text-white rounded px-3 py-1 hover:bg-green-700">⬇ 匯出複合商品</button>
           <span id="comboListCount" class="text-xs text-gray-400"></span>
         </div>
         <p class="text-xs text-gray-500">
