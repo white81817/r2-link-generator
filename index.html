@@ -2384,6 +2384,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <table class="w-full text-sm border-collapse">
             <thead>
               <tr class="bg-gray-100 text-gray-600 text-xs">
+                <th class="border px-2 py-2"></th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap bg-gray-50">品項條碼<br><span class="font-normal text-gray-400">新商品自動</span></th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap bg-indigo-50">類型<br><span class="font-normal text-gray-400">複合＝組合品</span></th>
                 <th class="border px-2 py-1 text-left whitespace-nowrap">
@@ -2418,7 +2419,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">有效天數</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">交貨天數</th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap">銷售模式</th>
-                <th class="border px-2 py-2"></th>
               </tr>
             </thead>
             <tbody id="variantRows"></tbody>
@@ -2914,6 +2914,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return { hit: null, via: '', reason: `找不到 ${code}` };
     }
 
+    // 匯入的舊複合商品沒有樣式、尺寸是匯入時隨手填的 F。
+    // 顯示時退回這兩個預設，不用為了 676 筆舊資料做一次性搬遷。
+    const COMBO_DEFAULT_SIZE = '組合限時優惠';
+    const comboStyleOf = (c) => c.style || c.name || c.id;
+    const comboSizeOf  = (c) => (c.size && c.size !== 'F') ? c.size : COMBO_DEFAULT_SIZE;
+
     // 複合商品沒有自己的廠商標籤——成本完全由成員決定。
     // 每個成員用「它自己商品的標籤」換匯算存貨成本，再乘數量加總，
     // 否則大陸／台灣／韓國成員混在一起會全部套到同一個匯率。
@@ -2981,6 +2987,15 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     function onVariantKindChange(tr) {
       const isCombo = tr.querySelector('.v-kind').value === 'combo';
       tr.querySelector('.v-combo-btn').style.display = isCombo ? '' : 'none';
+
+      // 複合規格的條碼是 BD 編號，要等成員選好才發得出來。
+      // 切過來時先清掉一般規格自動編的那組，免得看起來像已經有編號了。
+      if (isCombo && !tr.dataset.comboRef && !tr.dataset.comboPending) {
+        const bc = tr.querySelector('.v-barcode');
+        bc.value = '';
+        bc.dataset.manual = '1';
+        bc.placeholder = '選好成員後自動產生';
+      }
       ['.v-wholesale', '.v-weight'].forEach(sel => {
         const el = tr.querySelector(sel);
         el.readOnly = isCombo;
@@ -3061,8 +3076,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         // 所以存成 byProduct 對照表，沒有專屬設定才退回複合商品自己的。
         const own = (c.byProduct || {})[code] || {};
         const tr = addVariantRow({
-          style: own.style || c.style || c.name || c.id,
-          size: own.size || c.size || 'F',
+          style: own.style || comboStyleOf(c),
+          size: own.size || comboSizeOf(c),
           kind: 'combo',
           combo: { comboId: c.id, members: c.members || [] },
           sell: c.sell || '',
@@ -3106,7 +3121,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const ref = comboEditorRow.dataset.comboRef;
       document.getElementById('comboTitle').innerHTML = ref
         ? `已連結複合商品 <span class="font-mono">${ref}</span>（成員與售價請到「🎁 複合商品」分頁編輯）`
-        : `複合商品名稱將使用這一列的<b>樣式</b>：<span class="text-indigo-700 font-bold">${rowStyle || '（還沒填樣式）'}</span>`
+        : `複合商品名稱將使用這一列的<b>樣式＋尺寸</b>：<span class="text-indigo-700 font-bold">${[rowStyle, comboEditorRow.querySelector('.v-size').value.trim()].filter(Boolean).join(' ') || '（還沒填樣式）'}</span>`
           + `${comboEditorRow.dataset.comboPending ? `　編號 <span class="font-mono">${comboEditorRow.dataset.comboPending}</span>` : ''}`;
 
       if (!combo.members.length) {
@@ -3392,6 +3407,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       tr.dataset.idx = idx;
       tr.className = 'hover:bg-gray-50';
       tr.innerHTML = `
+        <td class="border px-1 py-1 text-center"><button onclick="removeVariantRow(this.closest('tr'))" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
         <td class="border px-1 py-1 bg-gray-50"><input class="v-barcode w-28 border-0 bg-transparent px-1 text-sm font-mono" type="text" value="${d.barcode||''}" placeholder="—"
           oninput="this.dataset.manual='1';calcVariant(this.closest('tr'))"></td>
         <td class="border px-1 py-1 bg-indigo-50 whitespace-nowrap">
@@ -3447,7 +3463,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <option value="下架" ${d.salesMode==='下架'?'selected':''}>下架</option>
           </select>
         </td>
-        <td class="border px-1 py-1 text-center"><button onclick="removeVariantRow(this.closest('tr'))" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
       `;
       tbody.appendChild(tr);
       // 載入／匯入進來的列要在 autoBarcode 之前就鎖住，否則條碼會先被覆蓋掉才鎖
@@ -4002,10 +4017,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           if (!nc.ok) { skipped.push(`${style || '（未命名）'}：取號失敗（${nc.data.error || nc.status}）`); continue; }
           id = nc.data.code;
         }
+        const size = tr.querySelector('.v-size').value.trim();
         const data = {
           id,
-          name: style || id,
-          style, size: tr.querySelector('.v-size').value.trim() || 'F',
+          // 從規格表建的，名稱就用「樣式＋尺寸」——那是同仁在規格表上實際看到的稱呼
+          name: [style, size].filter(Boolean).join(' '),
+          style, size,
           sell: tr.querySelector('.v-sell').value,
           shopeeSell: tr.querySelector('.v-shopee-sell').value,
           members,
@@ -4475,8 +4492,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       renderHiddenCombos();
       const own = (c.byProduct || {})[code] || {};
       const tr = addVariantRow({
-        style: own.style || c.style || c.name || c.id,
-        size: own.size || c.size || 'F',
+        style: own.style || comboStyleOf(c),
+        size: own.size || comboSizeOf(c),
         kind: 'combo',
         combo: { comboId: c.id, members: c.members || [] },
         sell: c.sell || '', shopeeSell: c.shopeeSell || '',
@@ -7126,8 +7143,7 @@ ${co.bank?`<div class="bank">
 
     function newCombo() {
       if (!shareToken) { alert('請先到「產品建立」分頁的共用商品庫連線'); return; }
-      comboEditing = { id: '', name: '', style: '', size: 'F', sell: '', shopeeSell: '', members: [] };
-      comboStyleTouched = false;
+      comboEditing = { id: '', name: '', style: '', size: COMBO_DEFAULT_SIZE, sell: '', shopeeSell: '', members: [] };
       fillComboForm();
       document.getElementById('comboEditBox').classList.remove('hidden');
       document.getElementById('c_id_hint').textContent = '選好成員後會自動產生編號';
@@ -7138,11 +7154,11 @@ ${co.bank?`<div class="bank">
       if (!ok) { alert('讀取失敗'); return; }
       const c = data.combo || {};
       comboEditing = {
-        id, name: c.name || '', style: c.style || 'F', size: c.size || 'F',
+        id, name: c.name || '',
+        style: comboStyleOf(c), size: comboSizeOf(c),
         sell: c.sell || '', shopeeSell: c.shopeeSell || '', members: c.members || [],
         byProduct: c.byProduct || {}, hiddenFor: c.hiddenFor || [],
       };
-      comboStyleTouched = !!(c.style && c.style !== c.name);   // 存過不一樣的就是動過
       fillComboForm();
       document.getElementById('comboEditBox').classList.remove('hidden');
       document.getElementById('c_id_hint').textContent = '';
@@ -7165,15 +7181,6 @@ ${co.bank?`<div class="bank">
     // 複合商品沒有自己的廠商標籤：成本完全由成員決定，
     // 每個成員用它自己商品的標籤換匯（comboMemberTotals 負責），這裡只負責顯示。
     function comboTotals() { return comboMemberTotals((comboEditing && comboEditing.members) || []); }
-
-    // 樣式預設就是複合名稱——多數情況兩者一樣，讓人少打一次。
-    // 使用者一旦自己動過樣式就不再覆蓋，否則會把他改的東西蓋掉。
-    let comboStyleTouched = false;
-
-    function onComboNameInput() {
-      if (!comboStyleTouched) setVal('c_style', pVal('c_name'));
-      recalcComboPricing();
-    }
 
     function recalcComboPricing() {
       if (!comboEditing) return;
@@ -7276,6 +7283,7 @@ ${co.bank?`<div class="bank">
       if (!comboEditing.id) { alert('還沒有複合編號，請確認連線後再試'); return; }
       if (!pVal('c_name').trim()) { alert('請填寫名稱'); return; }
       if (!comboEditing.style) comboEditing.style = comboEditing.name;   // 留空就用名稱
+      if (!comboEditing.size) comboEditing.size = COMBO_DEFAULT_SIZE;
 
       const { ok, status, data } = await shareApi(`/api/combos/${encodeURIComponent(comboEditing.id)}`, {
         method: 'PUT',
@@ -7333,11 +7341,11 @@ ${co.bank?`<div class="bank">
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-bold text-gray-700 mb-1">名稱 <span class="text-red-500">*</span></label>
-            <input id="c_name" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：登山杖4入組" oninput="onComboNameInput()">
+            <input id="c_name" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：登山杖4入組" oninput="recalcComboPricing()">
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">樣式</label>
-            <input id="c_style" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="留空則用複合名稱" oninput="comboStyleTouched=true;recalcComboPricing()">
+            <input id="c_style" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="留空則用複合名稱" oninput="recalcComboPricing()">
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">尺寸</label>
