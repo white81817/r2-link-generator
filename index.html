@@ -2049,6 +2049,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <div id="sharePanel" class="hidden">
           <div class="flex flex-wrap items-center gap-2 mb-2">
             <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="renderSharedList()">
+            <select id="shareVendorFilter" class="border rounded px-2 py-1 text-xs" onchange="renderSharedList()"><option value="">全部廠商</option></select>
+            <select id="shareUserFilter" class="border rounded px-2 py-1 text-xs" onchange="renderSharedList()"><option value="">全部修改者</option></select>
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
             <button onclick="openUploadPicker()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
@@ -2060,9 +2062,18 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs font-bold text-gray-700">選擇要上傳到共用庫的本機商品</span>
               <span class="text-xs">
-                <button onclick="toggleAllUploadPick(true)" class="text-blue-500 hover:underline">全選</button>
+                <button onclick="toggleAllUploadPick(true)" class="text-blue-500 hover:underline">全選目前顯示</button>
                 <button onclick="toggleAllUploadPick(false)" class="text-gray-400 hover:underline ml-2">全不選</button>
               </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <input id="uploadSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="renderUploadPickList()">
+              <select id="uploadVendorFilter" class="border rounded px-2 py-1 text-xs" onchange="renderUploadPickList()"><option value="">全部廠商</option></select>
+              <label class="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
+                <input type="checkbox" id="uploadOnlyNew" class="w-4 h-4" onchange="renderUploadPickList()">
+                只看共用庫還沒有的
+              </label>
+              <span id="uploadPickCount" class="text-xs text-gray-400"></span>
             </div>
             <div id="uploadPickList" class="max-h-52 overflow-y-auto bg-white border rounded p-2 mb-2"></div>
             <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-1 cursor-pointer">
@@ -2089,6 +2100,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <div class="flex items-center justify-between mb-2">
           <h3 class="text-sm font-semibold text-gray-600">📋 本機儲存的商品</h3>
           <button onclick="deleteSavedProduct()" class="text-xs text-red-400 hover:text-red-600 hidden" id="deleteBtn">刪除目前商品記錄</button>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <input id="savedSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="renderSavedList()">
+          <select id="savedVendorFilter" class="border rounded px-2 py-1 text-xs" onchange="renderSavedList()"><option value="">全部廠商</option></select>
+          <span id="savedCount" class="text-xs text-gray-400"></span>
         </div>
         <div id="savedProductList" class="flex flex-wrap gap-2">
           <span class="text-gray-400 text-xs">尚無儲存記錄</span>
@@ -3413,21 +3429,52 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       renderSharedList();
     }
 
+    // 幾百筆全部畫成藥丸畫面會炸掉，超過就只畫前 N 筆並提示縮小範圍
+    const LIST_RENDER_CAP = 80;
+
+    // 關鍵字可用空白分隔，全部命中才算（AND），跟蝦皮分類搜尋一致
+    function matchKeywords(haystack, kw) {
+      if (!kw) return true;
+      const hay = haystack.toLowerCase();
+      return kw.toLowerCase().split(/\s+/).filter(Boolean).every(t => hay.includes(t));
+    }
+
+    // 依現有資料重建下拉選項，保留使用者目前的選擇
+    function fillFilterOptions(selectId, values, allLabel) {
+      const el = document.getElementById(selectId);
+      if (!el) return;
+      const keep = el.value;
+      const opts = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+      el.innerHTML = `<option value="">${allLabel}</option>` +
+        opts.map(v => `<option value="${v}">${v}</option>`).join('');
+      el.value = opts.includes(keep) ? keep : '';
+    }
+
     function renderSharedList() {
       const box = document.getElementById('sharedProductList');
-      const kw = (document.getElementById('shareSearch').value || '').trim().toLowerCase();
-      const shown = kw
-        ? sharedList.filter(it => `${it.code} ${it.name || ''} ${it.updatedBy || ''}`.toLowerCase().includes(kw))
-        : sharedList;
+      const kw = (document.getElementById('shareSearch').value || '').trim();
+      fillFilterOptions('shareVendorFilter', sharedList.map(it => it.vendor), '全部廠商');
+      fillFilterOptions('shareUserFilter', sharedList.map(it => it.updatedBy), '全部修改者');
+      const vf = document.getElementById('shareVendorFilter').value;
+      const uf = document.getElementById('shareUserFilter').value;
 
+      const shown = sharedList.filter(it =>
+        (!vf || it.vendor === vf) && (!uf || it.updatedBy === uf) &&
+        matchKeywords(`${it.code} ${it.name || ''} ${it.vendor || ''} ${it.updatedBy || ''}`, kw));
+
+      const filtering = kw || vf || uf;
+      const capped = shown.slice(0, LIST_RENDER_CAP);
       document.getElementById('shareCount').textContent =
-        sharedList.length ? `共 ${sharedList.length} 筆${kw ? `，符合 ${shown.length} 筆` : ''}` : '';
+        sharedList.length
+          ? `共 ${sharedList.length} 筆${filtering ? `，符合 ${shown.length} 筆` : ''}` +
+            (shown.length > capped.length ? `，只顯示前 ${capped.length} 筆，請再縮小範圍` : '')
+          : '';
 
       if (!sharedList.length) { box.innerHTML = '<span class="text-gray-400 text-xs">共用庫還沒有商品</span>'; return; }
       if (!shown.length)      { box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; return; }
 
       const currentCode = pVal('p_code');
-      box.innerHTML = shown.map(it => {
+      box.innerHTML = capped.map(it => {
         const active = it.code === currentCode;
         const when = (it.updatedAt || '').slice(0, 16).replace('T', ' ');
         const delBtn = `<button onclick="deleteSharedProduct('${it.code}')"
@@ -3459,23 +3506,68 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // ── 選擇性上傳本機商品 ──
+    // 幾百筆時清單會被篩選蓋掉，勾選狀態不能只存在 DOM，否則一搜尋就全沒了
+    let uploadPickSelected = new Set();
+
     function openUploadPicker() {
       const db = getDB();
       const codes = Object.keys(db);
       if (!codes.length) { alert('本機沒有商品資料'); return; }
-      document.getElementById('uploadPickList').innerHTML = codes.map(code => {
+      uploadPickSelected = new Set(codes);
+      document.getElementById('uploadSearch').value = '';
+      document.getElementById('uploadOnlyNew').checked = false;
+      document.getElementById('removeLocalAfterUpload').checked = false;
+      document.getElementById('skipExistingOnUpload').checked = true;
+      renderUploadPickList();
+      document.getElementById('uploadPicker').classList.remove('hidden');
+    }
+
+    // 目前篩選條件下看得到的商品編號
+    function uploadPickVisibleCodes() {
+      const db = getDB();
+      const kw = (document.getElementById('uploadSearch').value || '').trim();
+      const vf = document.getElementById('uploadVendorFilter').value;
+      const onlyNew = document.getElementById('uploadOnlyNew').checked;
+      return Object.keys(db).filter(code =>
+        (!vf || db[code].vendor === vf) &&
+        (!onlyNew || !sharedList.some(x => x.code === code)) &&
+        matchKeywords(`${code} ${db[code].name || ''} ${db[code].vendor || ''}`, kw));
+    }
+
+    function renderUploadPickList() {
+      const db = getDB();
+      fillFilterOptions('uploadVendorFilter', Object.keys(db).map(k => db[k].vendor), '全部廠商');
+      const visible = uploadPickVisibleCodes();
+      const capped = visible.slice(0, LIST_RENDER_CAP);
+
+      document.getElementById('uploadPickCount').textContent =
+        `已勾選 ${uploadPickSelected.size} 筆／本機共 ${Object.keys(db).length} 筆` +
+        (visible.length !== Object.keys(db).length ? `，符合 ${visible.length} 筆` : '') +
+        (visible.length > capped.length ? `，只顯示前 ${capped.length} 筆` : '');
+
+      const box = document.getElementById('uploadPickList');
+      if (!visible.length) { box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; return; }
+      box.innerHTML = capped.map(code => {
         const inShared = sharedList.some(x => x.code === code);
         return `<label class="flex items-center gap-2 text-xs py-1 cursor-pointer hover:bg-gray-50">
-          <input type="checkbox" class="upload-pick w-4 h-4" value="${code}" checked>
+          <input type="checkbox" class="upload-pick w-4 h-4" value="${code}" ${uploadPickSelected.has(code) ? 'checked' : ''}
+                 onchange="onUploadPickToggle(this)">
           <span class="font-mono">${code}</span>
           <span class="text-gray-600">${db[code].name || ''}</span>
+          ${db[code].vendor ? `<span class="text-gray-400">${db[code].vendor}</span>` : ''}
           ${inShared ? '<span class="upload-exists text-orange-700"></span>' : ''}
         </label>`;
       }).join('');
-      document.getElementById('removeLocalAfterUpload').checked = false;
-      document.getElementById('skipExistingOnUpload').checked = true;
       refreshUploadExistsLabel();
-      document.getElementById('uploadPicker').classList.remove('hidden');
+    }
+
+    function onUploadPickToggle(cb) {
+      cb.checked ? uploadPickSelected.add(cb.value) : uploadPickSelected.delete(cb.value);
+      const el = document.getElementById('uploadPickCount');
+      const db = getDB();
+      const visible = uploadPickVisibleCodes();
+      el.textContent = `已勾選 ${uploadPickSelected.size} 筆／本機共 ${Object.keys(db).length} 筆` +
+        (visible.length !== Object.keys(db).length ? `，符合 ${visible.length} 筆` : '');
     }
 
     // 「已存在」的標記文字要跟著模式走，不然使用者會以為還是會覆蓋
@@ -3491,12 +3583,17 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.getElementById('uploadPicker').classList.add('hidden');
     }
 
+    // 「全選」只作用在目前篩選看得到的，不然搜尋等於白做
     function toggleAllUploadPick(on) {
-      document.querySelectorAll('.upload-pick').forEach(cb => { cb.checked = on; });
+      if (on) uploadPickVisibleCodes().forEach(c => uploadPickSelected.add(c));
+      else uploadPickSelected.clear();
+      renderUploadPickList();
     }
 
     async function doUploadSelected() {
-      const picked = [...document.querySelectorAll('.upload-pick:checked')].map(cb => cb.value);
+      // 讀 Set 而不是 DOM：被篩選蓋掉的勾選也要算進去
+      const db0 = getDB();
+      const picked = [...uploadPickSelected].filter(c => db0[c]);
       if (!picked.length) { alert('請至少勾選一個商品'); return; }
       const removeLocal = document.getElementById('removeLocalAfterUpload').checked;
       const skipExisting = document.getElementById('skipExistingOnUpload').checked;
@@ -3619,16 +3716,33 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const keys = Object.keys(db);
       const deleteBtn = document.getElementById('deleteBtn');
       const currentCode = pVal('p_code');
+      const countEl = document.getElementById('savedCount');
 
       if (keys.length === 0) {
         container.innerHTML = '<span class="text-gray-400 text-xs">尚無儲存記錄</span>';
+        if (countEl) countEl.textContent = '';
         deleteBtn.classList.add('hidden');
         return;
       }
 
       deleteBtn.classList.toggle('hidden', !currentCode || !db[currentCode]);
 
-      container.innerHTML = keys.map(k => {
+      const kw = (document.getElementById('savedSearch').value || '').trim();
+      fillFilterOptions('savedVendorFilter', keys.map(k => db[k].vendor), '全部廠商');
+      const vf = document.getElementById('savedVendorFilter').value;
+      const shown = keys.filter(k =>
+        (!vf || db[k].vendor === vf) &&
+        matchKeywords(`${k} ${db[k].name || ''} ${db[k].vendor || ''}`, kw));
+      const capped = shown.slice(0, LIST_RENDER_CAP);
+
+      if (countEl) {
+        countEl.textContent = `共 ${keys.length} 筆` +
+          ((kw || vf) ? `，符合 ${shown.length} 筆` : '') +
+          (shown.length > capped.length ? `，只顯示前 ${capped.length} 筆，請再縮小範圍` : '');
+      }
+      if (!shown.length) { container.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; return; }
+
+      container.innerHTML = capped.map(k => {
         const item = db[k];
         const isActive = k === currentCode;
         return `<button data-load-key="${k}"
