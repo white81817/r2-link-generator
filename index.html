@@ -3444,11 +3444,30 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setShareStatus('未連線');
     }
 
+    // 索引補標籤這件事使用者不該需要知道，偵測到就自動補一次。
+    // 只在這個分頁跑一次，失敗才把手動按鈕留給使用者。
+    let autoRebuildTried = false;
+
     async function refreshSharedList() {
       const { ok, data } = await shareApi('/api/products');
       if (!ok) { setShareStatus('讀取失敗，請重新連線', 'text-red-500'); return; }
       sharedList = data.list || [];
       renderSharedList();
+
+      const stale = sharedList.filter(it => !Array.isArray(it.tags)).length;
+      if (stale && !autoRebuildTried) {
+        autoRebuildTried = true;
+        setShareStatus(`正在補齊 ${stale} 筆的標籤索引…`);
+        const res = await shareApi('/api/products/rebuild-list', { method: 'POST' });
+        if (res.ok) {
+          const again = await shareApi('/api/products');
+          if (again.ok) { sharedList = again.data.list || []; renderSharedList(); }
+          setShareStatus('');
+        } else {
+          // 自動補失敗就安靜退場，畫面上的手動按鈕還在
+          setShareStatus('');
+        }
+      }
     }
 
     // ── 分頁 ──

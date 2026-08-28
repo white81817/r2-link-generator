@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-26-tags-v1',
+  version: '2026-08-26-tags-v2',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -784,7 +784,8 @@ app.post('/api/products/rebuild-list', async (c) => {
   for (let i = 0; i < list.length; i += CHUNK) {
     const part = await Promise.all(list.slice(i, i + CHUNK).map(async (it) => {
       const raw = await c.env.CACHE.get(`product:${it.code}`);
-      if (!raw) { missing.push(it.code); return null; }
+      // 讀不到完整資料就保留原摘要、標籤給空陣列——直接從清單移除等於偷偷刪資料
+      if (!raw) { missing.push(it.code); return { ...it, tags: Array.isArray(it.tags) ? it.tags : [] }; }
       const rec = JSON.parse(raw);
       return {
         code: it.code,
