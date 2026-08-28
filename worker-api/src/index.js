@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-26-bulkproducts-v1',
+  version: '2026-08-26-skipexisting-v1',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -706,9 +706,12 @@ app.put('/api/products', async (c) => {
 
   const updatedBy = String(body.updatedBy || '').trim().slice(0, 40);
   const force = !!body.force;
+  // skipExisting：共用庫已經有這個商品編號就整筆跳過，不覆蓋別人的資料
+  const skipExisting = !!body.skipExisting;
   const now = new Date().toISOString();
 
   const saved = [];
+  const skipped = [];
   const conflicts = [];
   const invalid = [];
   const summaries = [];
@@ -720,10 +723,11 @@ app.put('/api/products', async (c) => {
       const code = String((item && item.code) || '').trim();
       if (!code || !item.data || typeof item.data !== 'object') { invalid.push(code || '(無編號)'); return; }
 
-      if (!force) {
+      if (skipExisting || !force) {
         const existingRaw = await c.env.CACHE.get(`product:${code}`);
         const existing = existingRaw ? JSON.parse(existingRaw) : null;
-        if (existing && (item.baseUpdatedAt || '') !== (existing.updatedAt || '')) {
+        if (existing && skipExisting) { skipped.push(code); return; }
+        if (existing && !force && (item.baseUpdatedAt || '') !== (existing.updatedAt || '')) {
           conflicts.push(code);
           return;
         }
@@ -751,7 +755,7 @@ app.put('/api/products', async (c) => {
     await c.env.CACHE.put('product:list', JSON.stringify(list));
   }
 
-  return c.json({ ok: true, saved, conflicts, invalid, updatedAt: now });
+  return c.json({ ok: true, saved, skipped, conflicts, invalid, updatedAt: now });
 });
 
 // DELETE /api/products/:code  (一般通行碼即可刪除)

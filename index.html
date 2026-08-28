@@ -2065,6 +2065,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               </span>
             </div>
             <div id="uploadPickList" class="max-h-52 overflow-y-auto bg-white border rounded p-2 mb-2"></div>
+            <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-1 cursor-pointer">
+              <input type="checkbox" id="skipExistingOnUpload" class="w-4 h-4" checked onchange="refreshUploadExistsLabel()">
+              共用庫已經有的商品編號就<b>跳過</b>，不要覆蓋（取消勾選＝直接覆蓋掉共用庫的版本）
+            </label>
             <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-2 cursor-pointer">
               <input type="checkbox" id="removeLocalAfterUpload" class="w-4 h-4">
               上傳成功後，把這些商品從本機儲存中移除（共用庫已有一份，不需重複保留）
@@ -3465,11 +3469,22 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <input type="checkbox" class="upload-pick w-4 h-4" value="${code}" checked>
           <span class="font-mono">${code}</span>
           <span class="text-gray-600">${db[code].name || ''}</span>
-          ${inShared ? '<span class="text-orange-700">（共用庫已有，會被覆蓋）</span>' : ''}
+          ${inShared ? '<span class="upload-exists text-orange-700"></span>' : ''}
         </label>`;
       }).join('');
       document.getElementById('removeLocalAfterUpload').checked = false;
+      document.getElementById('skipExistingOnUpload').checked = true;
+      refreshUploadExistsLabel();
       document.getElementById('uploadPicker').classList.remove('hidden');
+    }
+
+    // 「已存在」的標記文字要跟著模式走，不然使用者會以為還是會覆蓋
+    function refreshUploadExistsLabel() {
+      const skip = document.getElementById('skipExistingOnUpload').checked;
+      document.querySelectorAll('.upload-exists').forEach(el => {
+        el.textContent = skip ? '（共用庫已有，會跳過）' : '（共用庫已有，會被覆蓋）';
+        el.className = 'upload-exists ' + (skip ? 'text-gray-400' : 'text-orange-700');
+      });
     }
 
     function closeUploadPicker() {
@@ -3484,12 +3499,19 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const picked = [...document.querySelectorAll('.upload-pick:checked')].map(cb => cb.value);
       if (!picked.length) { alert('請至少勾選一個商品'); return; }
       const removeLocal = document.getElementById('removeLocalAfterUpload').checked;
+      const skipExisting = document.getElementById('skipExistingOnUpload').checked;
+      const willOverwrite = picked.filter(code => sharedList.some(x => x.code === code));
       if (!confirm(`要上傳 ${picked.length} 個商品到共用庫嗎？`
+                 + (willOverwrite.length
+                     ? (skipExisting
+                         ? `\n其中 ${willOverwrite.length} 個共用庫已經有了，會跳過不覆蓋。`
+                         : `\n⚠ 其中 ${willOverwrite.length} 個共用庫已經有了，會被你的版本覆蓋掉。`)
+                     : '')
                  + (removeLocal ? '\n上傳成功的商品會從本機移除。' : ''))) return;
 
       const db = getDB();
       const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
-      const done = [], failed = [];
+      const done = [], failed = [], skipped = [];
       const progress = document.getElementById('uploadProgress');
       const setProgress = (t) => { if (progress) progress.textContent = t; };
 
@@ -3503,11 +3525,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         setProgress(`上傳中… ${Math.min(i + chunk.length, picked.length)} / ${picked.length}`);
         const { ok, status, data } = await shareApi('/api/products', {
           method: 'PUT',
-          body: JSON.stringify({ items: chunk.map(code => ({ code, data: db[code] })), force: true, updatedBy }),
+          body: JSON.stringify({ items: chunk.map(code => ({ code, data: db[code] })), force: true, skipExisting, updatedBy }),
         });
         if (ok && data && Array.isArray(data.saved)) {
+          const skippedNow = Array.isArray(data.skipped) ? data.skipped : [];
           done.push(...data.saved);
-          failed.push(...chunk.filter(c => !data.saved.includes(c)));
+          skipped.push(...skippedNow);
+          failed.push(...chunk.filter(c => !data.saved.includes(c) && !skippedNow.includes(c)));
         } else if (status === 404 || status === 405) {
           // worker 還沒部署到有批次端點的版本，退回逐筆上傳而不是整批失敗
           bulkSupported = false;
@@ -3517,10 +3541,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
 
       if (!bulkSupported) {
-        done.length = 0; failed.length = 0;
+        done.length = 0; failed.length = 0; skipped.length = 0;
         for (let i = 0; i < picked.length; i++) {
           const code = picked[i];
           setProgress(`上傳中（逐筆模式）… ${i + 1} / ${picked.length}`);
+          // 舊版 worker 沒有 skipExisting，改用共用庫清單在前端擋掉
+          if (skipExisting && sharedList.some(x => x.code === code)) { skipped.push(code); continue; }
           const { ok } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
             method: 'PUT',
             body: JSON.stringify({ data: db[code], force: true, updatedBy }),
@@ -3541,8 +3567,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       closeUploadPicker();
       await refreshSharedList();
       alert(`上傳完成：成功 ${done.length} 個`
+        + (skipped.length ? `，跳過 ${skipped.length} 個（共用庫已有）` : '')
         + (failed.length ? `，失敗 ${failed.length} 個（${failed.join('、')}）` : '')
-        + (removeLocal && done.length ? `\n已從本機移除 ${done.length} 個` : ''));
+        + (removeLocal && done.length ? `\n已從本機移除 ${done.length} 個（跳過與失敗的都保留在本機）` : '')
+        + (skipped.length ? `\n\n跳過的：${skipped.join('、')}` : ''));
     }
 
     async function loadSharedProduct(code) {
