@@ -3785,6 +3785,61 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setTimeout(() => status.textContent = '', 2500);
     }
 
+    // 在規格表直接建的複合規格也要進複合商品資料庫，
+    // 否則它只活在畫面上，重新載入商品就不見了。
+    async function syncNewComboRows() {
+      const rows = [...document.querySelectorAll('#variantRows tr')]
+        .filter(tr => tr.querySelector('.v-kind').value === 'combo' && !tr.dataset.comboRef);
+      if (!rows.length) return { created: 0, skipped: [] };
+
+      const index = buildItemIndex();
+      let created = 0;
+      const skipped = [];
+      for (const tr of rows) {
+        const combo = readRowCombo(tr);
+        const members = (combo && combo.members) || [];
+        const style = tr.querySelector('.v-style').value.trim();
+        if (!members.length) { skipped.push(`${style || '（未命名）'}：沒有設定成員`); continue; }
+
+        // 材積看成員：只要有一個 1S 就是 1S
+        const has1S = members.some(m => {
+          const { hit } = resolveComboMember(m, index);
+          return hit && /^[A-Z]{2}1S/.test(String(hit.product.code || '').toUpperCase());
+        });
+        const nc = await shareApi('/api/combos/next-code', {
+          method: 'POST', body: JSON.stringify({ size: has1S ? '1S' : '0S' }),
+        });
+        if (!nc.ok) { skipped.push(`${style || '（未命名）'}：取號失敗（${nc.data.error || nc.status}）`); continue; }
+
+        const id = nc.data.code;
+        const data = {
+          id,
+          name: style || id,
+          style, size: tr.querySelector('.v-size').value.trim() || 'F',
+          sell: tr.querySelector('.v-sell').value,
+          shopeeSell: tr.querySelector('.v-shopee-sell').value,
+          tags: Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value),
+          members,
+          fromProduct: pVal('p_code').trim(),
+        };
+        const res = await shareApi(`/api/combos/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ data, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+        });
+        if (!res.ok) { skipped.push(`${style || '（未命名）'}：儲存失敗（${res.data.error || res.status}）`); continue; }
+
+        tr.dataset.comboRef = id;
+        tr.querySelector('.v-barcode').value = id;
+        tr.querySelector('.v-barcode').dataset.manual = '1';
+        const btn = tr.querySelector('.v-combo-btn');
+        btn.textContent = '編輯';
+        btn.onclick = () => { switchTab('combo'); initComboTab(); editCombo(id); };
+        created++;
+      }
+      if (created) { comboList = []; }   // 讓下次讀取重新抓
+      return { created, skipped };
+    }
+
     async function manualSave() {
       const code = pVal('p_code');
       if (!code) { alert('請先填寫商品編號再儲存'); return; }
@@ -3796,8 +3851,19 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       const status = document.getElementById('saveStatus');
       status.textContent = '上傳共用庫中…';
+
+      // 先把新建的複合規格寫進複合商品資料庫，它們不會跟著商品存
+      const comboRes = await syncNewComboRows();
+      if (comboRes.skipped.length) {
+        alert('有複合規格沒有存成複合商品：\n\n・' + comboRes.skipped.join('\n・'));
+      }
+
       const ok = await saveToShared(false);
-      if (ok) { clearDraft(); status.textContent = `☁️ 已儲存到共用庫（${code}）`; }
+      if (ok) {
+        clearDraft();
+        status.textContent = `☁️ 已儲存到共用庫（${code}）`
+          + (comboRes.created ? `，另建立 ${comboRes.created} 個複合商品` : '');
+      }
       else status.textContent = `⚠ 共用庫未更新（${code}），內容已保留為草稿`;
       if (!ok) saveDraft();
       setTimeout(() => status.textContent = '', 3000);
@@ -3891,15 +3957,20 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       renderSharedList();
       await loadSharedItems();
 
-      const stale = sharedList.filter(it => !Array.isArray(it.tags)).length;
-      if (stale && !autoRebuildTried) {
+      // 兩種索引都會自動補：摘要缺標籤、或品項索引是空的（複合商品比對靠它）。
+      // rebuild-list 一次把兩份都重算，所以合併成同一個條件。
+      const staleTags = sharedList.filter(it => !Array.isArray(it.tags)).length;
+      const staleItems = sharedList.length && (!sharedItems || !Object.keys(sharedItems).length);
+      if ((staleTags || staleItems) && !autoRebuildTried) {
         autoRebuildTried = true;
-        setShareStatus(`正在補齊 ${stale} 筆的標籤索引…`);
-        const res = await shareApi('/api/products/rebuild-list', { method: 'POST' });
+        setShareStatus(staleItems ? '正在建立品項索引…' : `正在補齊 ${staleTags} 筆的標籤索引…`);
+        const res = await shareApi('/api/products/rebuild-list', { method: 'POST', timeout: 120000 });
         if (res.ok) {
           const again = await shareApi('/api/products');
           if (again.ok) { sharedList = again.data.list || []; renderSharedList(); }
-          setShareStatus('');
+          await loadSharedItems();
+          setShareStatus(`索引已更新（品項 ${sharedItems ? Object.keys(sharedItems).length : 0} 筆）`);
+          setTimeout(() => setShareStatus(''), 4000);
         } else {
           // 自動補失敗就安靜退場，畫面上的手動按鈕還在
           setShareStatus('');
