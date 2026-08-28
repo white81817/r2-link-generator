@@ -2795,19 +2795,50 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     let itemIndexCache = null;
     function invalidateItemIndex() { itemIndexCache = null; }
 
+    // 共用商品庫的品項索引（品項條碼 → 商品編號／批價／重量）。
+    // 共用庫的商品清單只有摘要，沒有規格明細，所以 worker 另外維護這一份。
+    let sharedItems = null;
+
+    async function loadSharedItems() {
+      if (!shareToken) { sharedItems = null; return; }
+      const { ok, data } = await shareApi('/api/products/items');
+      sharedItems = ok ? (data.items || {}) : null;
+      invalidateItemIndex();
+      return sharedItems;
+    }
+
+    // 成員以共用商品庫為主，本機資料補上共用庫還沒收錄的（例如剛建還沒上傳的）
     function buildItemIndex() {
       if (itemIndexCache) return itemIndexCache;
-      const db = getDB();
       const byBarcode = new Map();
       const byCode = new Map();
+
+      if (sharedItems) {
+        Object.entries(sharedItems).forEach(([key, e]) => {
+          const entry = {
+            product: { code: e.code, name: e.name },
+            variant: { style: e.style, size: e.size, wholesale: e.wholesale, weight: e.weight, barcode: e.barcode },
+            from: '共用庫',
+          };
+          const bc = String(e.barcode || '').trim().toUpperCase();
+          if (bc) byBarcode.set(bc, entry);
+          const code = String(e.code || '').trim().toUpperCase();
+          if (!byCode.has(code)) byCode.set(code, { product: entry.product, variants: [] });
+          byCode.get(code).variants.push(entry.variant);
+        });
+      }
+
+      const db = getDB();
       Object.values(db).forEach(p => {
         const vs = p.variants || [];
-        byCode.set(String(p.code || '').trim().toUpperCase(), { product: p, variants: vs });
+        const code = String(p.code || '').trim().toUpperCase();
+        if (!byCode.has(code)) byCode.set(code, { product: p, variants: vs });
         vs.forEach(v => {
           const bc = String(v.barcode || '').trim().toUpperCase();
-          if (bc && !byBarcode.has(bc)) byBarcode.set(bc, { product: p, variant: v });
+          if (bc && !byBarcode.has(bc)) byBarcode.set(bc, { product: p, variant: v, from: '本機' });
         });
       });
+
       itemIndexCache = { byBarcode, byCode };
       return itemIndexCache;
     }
@@ -2951,14 +2982,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const kw = (document.getElementById('comboSearch').value || '').trim();
       const box = document.getElementById('comboSearchResult');
       if (!kw) { box.innerHTML = ''; return; }
-      const db = getDB();
+      // 直接走同一份索引，這樣搜得到的就是加得進去的，不會出現「搜到卻對不到」
+      const index = buildItemIndex();
       const hits = [];
-      for (const p of Object.values(db)) {
-        for (const v of (p.variants || [])) {
-          if (!matchKeywords(`${p.code} ${p.name || ''} ${v.barcode || ''} ${v.style || ''} ${v.size || ''}`, kw)) continue;
-          hits.push({ p, v });
-          if (hits.length >= 30) break;
-        }
+      for (const entry of index.byBarcode.values()) {
+        const p = entry.product, v = entry.variant;
+        if (!matchKeywords(`${p.code} ${p.name || ''} ${v.barcode || ''} ${v.style || ''} ${v.size || ''}`, kw)) continue;
+        hits.push({ p, v });
         if (hits.length >= 30) break;
       }
       box.innerHTML = hits.length
@@ -3845,6 +3875,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (!ok) { setShareStatus('讀取失敗，請重新連線', 'text-red-500'); return; }
       sharedList = data.list || [];
       renderSharedList();
+      await loadSharedItems();
 
       const stale = sharedList.filter(it => !Array.isArray(it.tags)).length;
       if (stale && !autoRebuildTried) {
@@ -4599,7 +4630,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         pVal('p_highlight')||null, pVal('p_description')||null,
         pVal('p_web_status'),null,null,null,null,null,null,null,null,null,null,null,null];
       const childRows = variants.map((v,i) => {
-        const barcode = v.barcode||(code.slice(0,-2)+String(i+1).padStart(2,'0'));
+        const barcode = v.barcode || code;   // 品項條碼空白時退回商品編號
         return ['','子項',null,null,v.style||null,null,hasSize?(v.size||null):null,
           null,null,null,v.orig||null,v.spec||null,'0',barcode,'0',
           '啟用',v.stock||'0',v.preorder||'0',
@@ -4766,7 +4797,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[11] = v.size;                          // 規格選項 2
         r[12] = v.shopeeSell || '';              // 價格（規格表手填的蝦皮售價）
         r[13] = v.stock || '0';                  // 庫存
-        r[14] = v.barcode || (code.slice(0, -2) + String(i + 1).padStart(2, '0'));  // 商品選項貨號
+        r[14] = v.barcode || code;               // 商品選項貨號（條碼空白時退回商品編號）
         r[18] = platformImgUrl(imgs[0], 'shopee');   // 主商品圖片
         for (let k = 0; k < 8; k++) r[19 + k] = platformImgUrl(imgs[k + 1], 'shopee');  // 商品圖片 1~8
         r[27] = v.weight || '';                  // 重量
@@ -4922,7 +4953,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[25] = v.size || '無';                  // 詳細規格2
         r[26] = v.variantImg || '';              // 規格1圖片
         r[27] = v.vendorCode || '';              // 商品原廠編號
-        r[28] = v.barcode || '';                 // 國際條碼
+        r[28] = v.barcode || code;               // 國際條碼（條碼空白時退回商品編號）
         r[29] = v.stock || '0';                  // 庫存量
         r[30] = pVal('p_momo_ship_code').trim(); // 出貨/回收地代碼
         r[33] = pVal('p_highlight').trim();      // 商品特色標語（取自加強文字）
@@ -5176,7 +5207,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         r[35] = v.style || '無';                   // AJ 詳細規格1
         r[36] = v.size || '無';                    // AK 詳細規格2
         r[39] = v.vendorCode || '';                // AN 商品原廠編號
-        r[40] = v.barcode || '';                   // AO 國際條碼
+        r[40] = v.barcode || code;                 // AO 國際條碼（條碼空白時退回商品編號）
         r[41] = v.stock || '0';                    // AP 可備貨量
         r[47] = '無';                              // AV 分店名（規格）
         if (idx > 0) return r;                     // 第二個規格之後只填單品資料

@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-26-codeseq-v1',
+  version: '2026-08-28-items-v1',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -626,6 +626,34 @@ function productTags(data) {
   return [...new Set([...checked, ...custom])].slice(0, 30);
 }
 
+// 複合商品要靠「品項條碼 → 批價／重量」查成員，但摘要清單只有商品層級的欄位。
+// 另外維護一份品項索引 product:items，寫入商品時一併更新（跟 product:list 同樣
+// 只在每次請求結束前寫一次，避免對同一個 key 高頻寫入被 KV 節流）。
+function productItemEntries(code, data) {
+  const name = String((data && data.name) || '');
+  return ((data && data.variants) || []).map((v, i) => ({
+    barcode: String(v.barcode || '').trim(),
+    code,
+    name,
+    style: String(v.style || ''),
+    size: String(v.size || ''),
+    wholesale: v.wholesale === '' || v.wholesale == null ? null : Number(v.wholesale),
+    weight: v.weight === '' || v.weight == null ? null : Number(v.weight),
+    idx: i + 1,
+  }));
+}
+
+// items 以品項條碼為鍵；沒有條碼的品項改用「商品編號#序號」，
+// 這樣至少商品編號那條比對路徑還在。
+function mergeItems(map, code, data) {
+  for (const k of Object.keys(map)) {
+    if (map[k] && map[k].code === code) delete map[k];
+  }
+  productItemEntries(code, data).forEach(e => {
+    map[e.barcode || `${code}#${e.idx}`] = e;
+  });
+}
+
 // KV：product:<code> 存完整資料、product:list 存摘要清單。
 
 // GET /api/products — 取得商品摘要清單
@@ -635,6 +663,14 @@ app.get('/api/products', async (c) => {
 
   const raw = await c.env.CACHE.get('product:list');
   return c.json({ role, list: raw ? JSON.parse(raw) : [] });
+});
+
+// GET /api/products/items — 品項索引（品項條碼 → 商品編號／批價／重量），複合商品比對成員用
+app.get('/api/products/items', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  const raw = await c.env.CACHE.get('product:items');
+  const items = raw ? JSON.parse(raw) : {};
+  return c.json({ ok: true, count: Object.keys(items).length, items });
 });
 
 // GET /api/products/:code — 取得單一商品完整資料
@@ -693,6 +729,11 @@ app.put('/api/products/:code', async (c) => {
   if (at >= 0) list[at] = summary; else list.unshift(summary);
   await c.env.CACHE.put('product:list', JSON.stringify(list));
 
+  const itemsRaw = await c.env.CACHE.get('product:items');
+  const items = itemsRaw ? JSON.parse(itemsRaw) : {};
+  mergeItems(items, code, body.data);
+  await c.env.CACHE.put('product:items', JSON.stringify(items));
+
   return c.json({ ok: true, updatedAt: now });
 });
 
@@ -721,6 +762,7 @@ app.put('/api/products', async (c) => {
   const now = new Date().toISOString();
 
   const saved = [];
+  const items2 = [];
   const skipped = [];
   const conflicts = [];
   const invalid = [];
@@ -745,6 +787,7 @@ app.put('/api/products', async (c) => {
 
       await c.env.CACHE.put(`product:${code}`, JSON.stringify({ code, data: item.data, updatedAt: now, updatedBy }));
       saved.push(code);
+      items2.push({ code, data: item.data });
       summaries.push({
         code,
         name:   String(item.data.name || ''),
@@ -764,6 +807,11 @@ app.put('/api/products', async (c) => {
       if (at >= 0) list[at] = sm; else list.unshift(sm);
     });
     await c.env.CACHE.put('product:list', JSON.stringify(list));
+
+    const itemsRaw = await c.env.CACHE.get('product:items');
+    const items = itemsRaw ? JSON.parse(itemsRaw) : {};
+    items2.forEach(({ code, data }) => mergeItems(items, code, data));
+    await c.env.CACHE.put('product:items', JSON.stringify(items));
   }
 
   return c.json({ ok: true, saved, skipped, conflicts, invalid, updatedAt: now });
@@ -800,7 +848,20 @@ app.post('/api/products/rebuild-list', async (c) => {
   }
 
   await c.env.CACHE.put('product:list', JSON.stringify(rebuilt));
-  return c.json({ ok: true, count: rebuilt.length, missing });
+
+  // 品項索引也一起重建：複合商品比對成員靠它，舊資料寫入時還沒有這個索引
+  const items = {};
+  for (let i = 0; i < list.length; i += CHUNK) {
+    await Promise.all(list.slice(i, i + CHUNK).map(async (it) => {
+      const raw = await c.env.CACHE.get(`product:${it.code}`);
+      if (!raw) return;
+      const rec = JSON.parse(raw);
+      mergeItems(items, it.code, rec.data);
+    }));
+  }
+  await c.env.CACHE.put('product:items', JSON.stringify(items));
+
+  return c.json({ ok: true, count: rebuilt.length, items: Object.keys(items).length, missing });
 });
 
 // ===== 商品編號流水號 =====
@@ -894,6 +955,12 @@ app.delete('/api/products/:code', async (c) => {
   if (listRaw) {
     const list = JSON.parse(listRaw).filter(x => x.code !== code);
     await c.env.CACHE.put('product:list', JSON.stringify(list));
+    const itemsRaw = await c.env.CACHE.get('product:items');
+    if (itemsRaw) {
+      const items = JSON.parse(itemsRaw);
+      for (const k of Object.keys(items)) if (items[k] && items[k].code === code) delete items[k];
+      await c.env.CACHE.put('product:items', JSON.stringify(items));
+    }
   }
   return c.json({ ok: true });
 });
