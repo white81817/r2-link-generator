@@ -2051,7 +2051,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('share')">
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
             <button onclick="analyzeCodePatterns()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="看共用庫裡的商品編號有幾種寫法、哪些不符合 SH/CF + 0S/1S + 四位數 + 00 的規則">🔢 檢查編號規則</button>
-            <button onclick="openUploadPicker()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
             <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded px-3 py-1 hidden font-medium" title="商品本身有標籤，只是共用庫的清單索引沒存到，用標籤篩選時會漏掉它們。按一次會從商品讀回來補進索引，不會改到商品內容"></button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
             <span id="shareCount" class="text-xs text-gray-400"></span>
@@ -2103,14 +2102,19 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         </div>
       </div>
 
-      <!-- 已儲存商品（本機） -->
-      <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+      <!-- 本機殘留資料（僅供遷移，全部上傳到共用庫後這一區會自動消失） -->
+      <div id="localLegacyBox" class="bg-amber-50 border border-amber-200 rounded-lg shadow-md p-4 mb-6 hidden">
+        <p class="text-xs text-amber-800 mb-2">
+          ⚠ 商品現在一律存在<b>共用商品庫</b>。下面這些是還留在這台電腦上的舊資料，
+          請用〔⬆ 上傳到共用庫〕搬過去，搬完這一區就會自動消失。
+        </p>
         <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-semibold text-gray-600">📋 本機儲存的商品</h3>
+          <h3 class="text-sm font-semibold text-gray-600">📋 尚未搬到共用庫的本機資料</h3>
           <button onclick="deleteSavedProduct()" class="text-xs text-red-400 hover:text-red-600 hidden" id="deleteBtn">刪除目前商品記錄</button>
         </div>
         <div class="flex flex-wrap items-center gap-2 mb-2">
           <input id="savedSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('saved')">
+          <button onclick="openUploadPicker()" class="text-xs bg-amber-200 hover:bg-amber-300 text-amber-900 rounded px-3 py-1 font-medium">⬆ 上傳到共用庫</button>
           <button onclick="deleteSavedFiltered()" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded px-3 py-1" title="刪除目前搜尋／標籤篩選出來的所有本機記錄">🗑 刪除篩選結果</button>
           <span id="savedCount" class="text-xs text-gray-400"></span>
         </div>
@@ -3756,36 +3760,46 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       };
     }
 
+    // 商品一律存在共用商品庫。本機只留一份「正在編輯」的草稿，
+    // 用途是關掉分頁後回來還在，不是拿來當商品資料庫。
+    const DRAFT_KEY = 'productDraft_v1';
+
+    function saveDraft() {
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify(collectFormData())); } catch {}
+    }
+
+    function loadDraft() {
+      try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch { return null; }
+    }
+
+    function clearDraft() {
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    }
+
     function autoSave() {
       const code = pVal('p_code');
       if (!code) return;
-      const db = getDB();
-      db[code] = collectFormData();
-      setDB(db);
-      renderSavedList();
+      saveDraft();
       const status = document.getElementById('saveStatus');
-      status.textContent = `✅ 已自動儲存（${code}）`;
+      status.textContent = `📝 草稿已保留（${code}）　按「儲存」才會存進共用庫`;
       setTimeout(() => status.textContent = '', 2500);
     }
 
     async function manualSave() {
       const code = pVal('p_code');
-      if (!code) {
-        alert('請先填寫商品編號再儲存');
+      if (!code) { alert('請先填寫商品編號再儲存'); return; }
+      if (!shareToken) {
+        alert('商品現在一律存在共用商品庫，請先在上方「共用商品庫」輸入通行碼連線。\n\n'
+            + '你目前填的內容已保留為草稿，連線後直接按儲存即可。');
+        saveDraft();
         return;
       }
-      const db = getDB();
-      db[code] = collectFormData();
-      setDB(db);
-      renderSavedList();
-
       const status = document.getElementById('saveStatus');
-      status.textContent = `💾 已儲存（${code}）`;
-      if (shareToken) {
-        status.textContent = `💾 已存本機，上傳共用庫中…`;
-        const ok = await saveToShared(false);
-        status.textContent = ok ? `☁️ 已儲存到共用庫（${code}）` : `💾 已存本機，共用庫未更新（${code}）`;
-      }
+      status.textContent = '上傳共用庫中…';
+      const ok = await saveToShared(false);
+      if (ok) { clearDraft(); status.textContent = `☁️ 已儲存到共用庫（${code}）`; }
+      else status.textContent = `⚠ 共用庫未更新（${code}），內容已保留為草稿`;
+      if (!ok) saveDraft();
       setTimeout(() => status.textContent = '', 3000);
     }
 
@@ -4321,9 +4335,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const deleteBtn = document.getElementById('deleteBtn');
       const currentCode = pVal('p_code');
       const countEl = document.getElementById('savedCount');
+      const box = document.getElementById('localLegacyBox');
 
+      // 本機資料清空後整個區塊收起來——這是遷移用的暫時介面，不是常駐功能
+      box.classList.toggle('hidden', keys.length === 0);
       if (keys.length === 0) {
-        container.innerHTML = '<span class="text-gray-400 text-xs">尚無儲存記錄</span>';
+        container.innerHTML = '';
         if (countEl) countEl.textContent = '';
         deleteBtn.classList.add('hidden');
         return;
@@ -4566,6 +4583,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // ===== 匯出 =====
+    // USALE 是品項條碼真正被建立的地方，所以條碼空白時這裡「產生」一個是合理的；
+    // 但只有在商品編號合規時才產得出有意義的值。不合規的編號（例如 ABC123）
+    // 用舊寫法會湊出 ABC101 這種假條碼寫進 ERP，寧可退回商品編號。
+    function usaleBarcodeFallback(code, i) {
+      const parsed = parseProductCode(code);
+      return parsed ? parsed.prefix + parsed.serial + String(i + 1).padStart(2, '0') : code;
+    }
+
     function exportInventoryXLS() {
       const code = pVal('p_code'), name = pVal('p_name');
       if (!code || !name) { alert('請填寫商品編號和商品名稱！'); return; }
@@ -4592,7 +4617,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         v.stock||'0', v.sell||'', '', '', v.weight||'',
         pVal('p_vendor'), v.vendorCode, v.wholesale||'',
         '',
-        v.barcode||(code.slice(0,-2)+String(i+1).padStart(2,'0')),
+        v.barcode || usaleBarcodeFallback(code, i),
         v.salesMode||'可追', v.safety||'', '',
         note, '',
         v.len||'', v.wid||'', v.hei||'',
@@ -5382,15 +5407,46 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           else g.members.set(key, { barcode, code, qty: 1 });
         });
 
-        const db = getDB();
-        const index = buildItemIndex();
-        let attached = 0, standalone = 0, updatedProducts = new Set();
-        const unresolvedCombos = [];
+        if (!shareToken) {
+          alert('商品現在一律存進共用商品庫，請先在上方「共用商品庫」輸入通行碼連線後再匯入。');
+          return;
+        }
 
+        const index = buildItemIndex();
+
+        // 先算出每個複合商品要掛到哪個母商品，再一次把這些母商品的完整資料抓回來，
+        // 逐筆 GET 會變成上百趟往返
+        const plan = [];
         for (const g of byId.values()) {
           const members = [...g.members.values()];
           const parents = [...new Set(members.map(m => comboMemberParent(m.code)).filter(Boolean))];
+          let hostCode = null;
+          if (parents.length === 1) {
+            if (index.byCode.has(parents[0])) hostCode = parents[0];
+            else {
+              for (const m of members) {
+                const { hit } = resolveComboMember(m, index);
+                if (hit) { hostCode = String(hit.product.code || '').toUpperCase(); break; }
+              }
+            }
+          }
+          plan.push({ g, members, hostCode });
+        }
 
+        const hostCodes = [...new Set(plan.map(x => x.hostCode).filter(Boolean))];
+        const hosts = {};
+        for (let i = 0; i < hostCodes.length; i += 100) {
+          const { ok, data } = await shareApi('/api/products/batch-get', {
+            method: 'POST', body: JSON.stringify({ codes: hostCodes.slice(i, i + 100) }),
+          });
+          if (ok) Object.entries(data.products || {}).forEach(([c, rec]) => { hosts[c] = rec.data; });
+        }
+
+        const db = {};
+        let attached = 0, standalone = 0, updatedProducts = new Set();
+        const unresolvedCombos = [];
+
+        for (const { g, members, hostCode } of plan) {
           // 成員對得到幾個
           const bad = members.filter(m => !resolveComboMember(m, index).hit).length;
           if (bad) unresolvedCombos.push(`${g.comboId} ${g.name}（${bad}/${members.length} 個成員對不到）`);
@@ -5411,26 +5467,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             deliveryDays: '10', salesMode: '可追', barcode: '', barcodeManual: true,
           };
 
-          // 成員同屬一個母商品，而且那個商品在本機找得到 → 掛成它的一個規格
-          let host = null;
-          if (parents.length === 1) {
-            const direct = index.byCode.get(parents[0]);
-            if (direct) host = direct.product;
-            else {
-              // 成員可能是用品項條碼記的，從第一個對得到的成員回推母商品
-              for (const m of members) {
-                const { hit } = resolveComboMember(m, index);
-                if (hit) { host = hit.product; break; }
-              }
-            }
-          }
-
+          const host = hostCode ? (db[hostCode] || hosts[hostCode]) : null;
           if (host) {
             host.variants = host.variants || [];
             const at = host.variants.findIndex(v => v.combo && v.combo.comboId === g.comboId);
             if (at >= 0) host.variants[at] = variant; else host.variants.push(variant);
-            db[host.code] = host;
-            updatedProducts.add(host.code);
+            db[hostCode] = host;
+            updatedProducts.add(hostCode);
             attached++;
           } else {
             const code = g.comboId;
@@ -5447,11 +5490,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           }
         }
 
-        setDB(db);
-        renderSavedList();
-
         let uploaded = 0;
-        if (shareToken) {
+        {
           const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
           const codes = [...updatedProducts];
           for (let i = 0; i < codes.length; i += 50) {
@@ -5469,8 +5509,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           + `・共 ${byId.size} 個複合商品\n`
           + `・掛到既有商品成為複合規格：${attached} 個\n`
           + `・成員跨多個商品，建成獨立商品：${standalone} 個\n`
-          + `・影響 ${updatedProducts.size} 個商品`
-          + (shareToken ? `，已上傳共用庫 ${uploaded} 個` : '，未連線共用庫，僅存本機')
+          + `・影響 ${updatedProducts.size} 個商品，已存進共用商品庫 ${uploaded} 個`
           + (unresolvedCombos.length
               ? `\n\n⚠ 有 ${unresolvedCombos.length} 個複合商品的成員對不到本機資料，`
                 + `批價與重量會是空的，需要人工處理：\n`
@@ -5562,11 +5601,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const products = usaleRowsToProducts(rows);
         if (!products.length) { alert('檔案中沒有可匯入的商品'); return; }
 
-        // 判斷重複：本機與共用庫都算，避免覆蓋既有資料
-        const localDB = getDB();
+        // 商品一律存共用庫，重複與否就只看共用庫
         const sharedCodes = new Set(sharedList.map(x => x.code));
-        const dup = products.filter(p => localDB[p.code] || sharedCodes.has(p.code));
-        const fresh = products.filter(p => !localDB[p.code] && !sharedCodes.has(p.code));
+        const dup = products.filter(p => sharedCodes.has(p.code));
+        const fresh = products.filter(p => !sharedCodes.has(p.code));
 
         let overwrite = false;
         if (dup.length) {
@@ -5584,15 +5622,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const toImport = overwrite ? products : fresh;
         if (!toImport.length) { alert('沒有需要匯入的商品'); return; }
 
-        // 一律先寫入本機，已連線共用庫則一併上傳
-        const db = getDB();
-        toImport.forEach(p => { db[p.code] = p; });
-        setDB(db);
-        renderSavedList();
+        if (!shareToken) {
+          alert('商品現在一律存進共用商品庫，請先在上方「共用商品庫」輸入通行碼連線後再匯入。');
+          return;
+        }
 
         let uploaded = 0, failed = [];
         let baselineMsg = '';
-        if (shareToken) {
+        {
           // 逐筆送太慢（每筆都會重寫共用庫索引），改用批次端點
           const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
           const BATCH = 50;
@@ -5628,11 +5665,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
         alert(
           `匯入完成\n` +
-          `・寫入本機：${toImport.length} 個商品\n` +
-          (overwrite ? '' : (dup.length ? `・略過已存在：${dup.length} 個\n` : '')) +
-          (shareToken
-            ? `・上傳共用庫：成功 ${uploaded} 個${failed.length ? `，失敗 ${failed.length} 個（${failed.slice(0, 20).join('、')}${failed.length > 20 ? '…' : ''}）` : ''}`
-            : '・未連線共用庫，資料僅存在本機')
+          `・存進共用商品庫：成功 ${uploaded} 個` +
+          (failed.length ? `，失敗 ${failed.length} 個（${failed.slice(0, 20).join('、')}${failed.length > 20 ? '…' : ''}）` : '') + '\n' +
+          (overwrite ? '' : (dup.length ? `・略過已存在：${dup.length} 個\n` : ''))
           + baselineMsg
         );
       } catch (e) {

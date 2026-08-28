@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-28-items-v1',
+  version: '2026-08-28-shared-only-v1',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -663,6 +663,27 @@ app.get('/api/products', async (c) => {
 
   const raw = await c.env.CACHE.get('product:list');
   return c.json({ role, list: raw ? JSON.parse(raw) : [] });
+});
+
+// POST /api/products/batch-get — body: { codes: [...] }
+// 全部走共用庫之後，像複合商品匯入這種要一次讀很多商品完整資料的流程，
+// 逐筆 GET 會變成上百趟往返，這裡一次拿回來。
+app.post('/api/products/batch-get', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const codes = Array.isArray(body && body.codes) ? body.codes.slice(0, 100) : null;
+  if (!codes) return c.json({ error: '缺少 codes' }, 400);
+
+  const out = {};
+  const CHUNK = 20;
+  for (let i = 0; i < codes.length; i += CHUNK) {
+    await Promise.all(codes.slice(i, i + CHUNK).map(async (code) => {
+      const raw = await c.env.CACHE.get(`product:${code}`);
+      if (raw) out[code] = JSON.parse(raw);
+    }));
+  }
+  return c.json({ ok: true, products: out });
 });
 
 // GET /api/products/items — 品項索引（品項條碼 → 商品編號／批價／重量），複合商品比對成員用
