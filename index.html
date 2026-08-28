@@ -2393,6 +2393,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <thead>
               <tr class="bg-gray-100 text-gray-600 text-xs">
                 <th class="border px-2 py-2 text-left whitespace-nowrap bg-gray-50">品項條碼<br><span class="font-normal text-gray-400">新商品自動</span></th>
+                <th class="border px-2 py-2 text-left whitespace-nowrap bg-indigo-50">類型<br><span class="font-normal text-gray-400">複合＝組合品</span></th>
                 <th class="border px-2 py-1 text-left whitespace-nowrap">
                   樣式 <span class="text-red-400">*</span>
                   <div class="text-gray-400 font-normal">1shop規格名稱1</div>
@@ -2432,6 +2433,24 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </table>
         </div>
         <p class="text-xs text-red-400 mt-2">⚠ 毛利率 🟢 合格， 🔴 危險<br>不要定到紅色圓點 🔴，廣告成本率控制在 25%，超過的話危險</p>
+
+        <!-- 複合商品成員編輯 -->
+        <div id="comboEditor" class="hidden mt-4 border border-indigo-200 rounded-lg p-3 bg-indigo-50">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <span class="text-sm font-bold text-gray-700">複合商品成員</span>
+              <span id="comboTitle" class="text-xs text-gray-500 ml-2"></span>
+            </div>
+            <button onclick="closeComboEditor()" class="text-xs text-gray-400 hover:text-gray-600">關閉</button>
+          </div>
+          <p class="text-xs text-gray-500 mb-2">
+            廠商批價與重量由成員加總帶入（數量會乘進去），所以複合列的這兩欄是唯讀的。
+            成員來自「本機儲存的商品」，對不到的會標紅字。
+          </p>
+          <div id="comboMemberList" class="bg-white border rounded p-2 mb-2 max-h-60 overflow-y-auto"></div>
+          <input id="comboSearch" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="🔍 搜尋要加入的品項（商品編號、名稱、條碼、樣式）" oninput="renderComboSearch()">
+          <div id="comboSearchResult" class="bg-white border rounded mt-1 max-h-52 overflow-y-auto"></div>
+        </div>
       </div>
 
       <!-- 匯出按鈕 -->
@@ -2460,6 +2479,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <label class="bg-purple-100 hover:bg-purple-200 text-purple-800 px-4 py-2 rounded-lg font-medium cursor-pointer self-center text-sm" title="匯入 USALE 匯出的商品資料，依商品編號歸群為商品與規格">
           ⬆ 匯入 USALE 商品資料
           <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importUsaleProducts(event)">
+        </label>
+        <label class="bg-indigo-100 hover:bg-indigo-200 text-indigo-800 px-4 py-2 rounded-lg font-medium cursor-pointer self-center text-sm" title="匯入 USALE 的複合商品資料，掛成對應商品的複合規格">
+          ⬆ 匯入複合商品
+          <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importCompositeProducts(event)">
         </label>
         <span id="saveStatus" class="self-center text-sm text-gray-500"></span>
       </div>
@@ -2760,6 +2783,206 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
 
+    // ===== 複合商品（組合品）=====
+    // 一個規格列可以是「一般」或「複合」。複合列由多個既有品項組成，
+    // 廠商批價與重量由成員加總後帶入，讓定價與毛利率照原本那套算。
+    // 成員存在 tr.dataset.combo（JSON），跟著 variant 一起存檔。
+
+    // 建立「品項條碼 → 品項」與「商品編號 → 商品」兩份索引。
+    // 來源是本機商品庫：共用庫的清單只有摘要，沒有規格明細。
+    // 索引會被每一列複合規格重建一次，商品上千筆時很吃力，
+    // 快取起來並在寫入商品庫時失效。
+    let itemIndexCache = null;
+    function invalidateItemIndex() { itemIndexCache = null; }
+
+    function buildItemIndex() {
+      if (itemIndexCache) return itemIndexCache;
+      const db = getDB();
+      const byBarcode = new Map();
+      const byCode = new Map();
+      Object.values(db).forEach(p => {
+        const vs = p.variants || [];
+        byCode.set(String(p.code || '').trim().toUpperCase(), { product: p, variants: vs });
+        vs.forEach(v => {
+          const bc = String(v.barcode || '').trim().toUpperCase();
+          if (bc && !byBarcode.has(bc)) byBarcode.set(bc, { product: p, variant: v });
+        });
+      });
+      itemIndexCache = { byBarcode, byCode };
+      return itemIndexCache;
+    }
+
+    // 比對順序照約定：先品項條碼，比不到再用商品編號。
+    // 商品編號只有在該商品「只有一個規格」時才敢認，多規格無法決定是哪一筆。
+    function resolveComboMember(m, index) {
+      const bc = String(m.barcode || '').trim().toUpperCase();
+      if (bc && index.byBarcode.has(bc)) return { hit: index.byBarcode.get(bc), via: '品項條碼' };
+
+      const code = String(m.code || '').trim().toUpperCase();
+      if (!code) return { hit: null, via: '', reason: '沒有編號' };
+      if (index.byBarcode.has(code)) return { hit: index.byBarcode.get(code), via: '商品編號當條碼' };
+
+      const byCode = index.byCode.get(code);
+      if (byCode) {
+        if (byCode.variants.length === 1) return { hit: { product: byCode.product, variant: byCode.variants[0] }, via: '商品編號' };
+        return { hit: null, via: '', reason: `商品編號對到 ${code}，但它有 ${byCode.variants.length} 個規格，無法決定是哪一個` };
+      }
+      return { hit: null, via: '', reason: `找不到 ${code}` };
+    }
+
+    function readRowCombo(tr) {
+      try { return JSON.parse(tr.dataset.combo || 'null'); } catch { return null; }
+    }
+
+    function writeRowCombo(tr, combo) {
+      tr.dataset.combo = combo ? JSON.stringify(combo) : '';
+    }
+
+    // 複合列的批價與重量由成員加總；成員對不到就留空並在摘要標出來
+    function recalcComboRow(tr) {
+      const combo = readRowCombo(tr);
+      const summary = tr.querySelector('.v-combo-summary');
+      const wEl = tr.querySelector('.v-wholesale');
+      const gEl = tr.querySelector('.v-weight');
+      if (!combo || !Array.isArray(combo.members) || !combo.members.length) {
+        summary.textContent = '未設定成員';
+        summary.className = 'v-combo-summary text-xs text-red-500';
+        return;
+      }
+      const index = buildItemIndex();
+      let price = 0, weight = 0, unresolved = 0, qtyTotal = 0;
+      combo.members.forEach(m => {
+        const qty = Math.max(1, parseInt(m.qty, 10) || 1);
+        qtyTotal += qty;
+        const { hit } = resolveComboMember(m, index);
+        if (!hit) { unresolved++; return; }
+        price  += (Number(hit.variant.wholesale) || 0) * qty;
+        weight += (Number(hit.variant.weight) || 0) * qty;
+      });
+      if (!unresolved) {
+        wEl.value = price ? Number(price.toFixed(2)) : '';
+        gEl.value = weight ? Number(weight.toFixed(3)) : '';
+      }
+      summary.textContent = `${combo.members.length} 種 / 共 ${qtyTotal} 件`
+        + (unresolved ? `，${unresolved} 種對不到` : '');
+      summary.className = 'v-combo-summary text-xs ' + (unresolved ? 'text-red-500' : 'text-gray-400');
+      calcVariant(tr);
+    }
+
+    // 複合列的批價與重量是算出來的，鎖住避免手改後跟成員對不上
+    function onVariantKindChange(tr) {
+      const isCombo = tr.querySelector('.v-kind').value === 'combo';
+      tr.querySelector('.v-combo-btn').style.display = isCombo ? '' : 'none';
+      ['.v-wholesale', '.v-weight'].forEach(sel => {
+        const el = tr.querySelector(sel);
+        el.readOnly = isCombo;
+        el.classList.toggle('text-gray-500', isCombo);
+        el.classList.toggle('bg-gray-100', isCombo);
+      });
+      if (isCombo) recalcComboRow(tr);
+      else {
+        tr.querySelector('.v-combo-summary').textContent = '';
+        calcVariant(tr);
+      }
+    }
+
+    // ── 成員編輯視窗 ──
+    let comboEditorRow = null;
+
+    function openComboEditor(tr) {
+      comboEditorRow = tr;
+      const combo = readRowCombo(tr) || { members: [] };
+      writeRowCombo(tr, combo);
+      renderComboEditor();
+      document.getElementById('comboEditor').classList.remove('hidden');
+    }
+
+    function closeComboEditor() {
+      document.getElementById('comboEditor').classList.add('hidden');
+      comboEditorRow = null;
+    }
+
+    function renderComboEditor() {
+      if (!comboEditorRow) return;
+      const combo = readRowCombo(comboEditorRow) || { members: [] };
+      const index = buildItemIndex();
+      const box = document.getElementById('comboMemberList');
+      document.getElementById('comboTitle').textContent =
+        `${comboEditorRow.querySelector('.v-style').value || '（未命名規格）'}　${combo.comboId ? '｜USALE 複合編號 ' + combo.comboId : ''}`;
+
+      if (!combo.members.length) {
+        box.innerHTML = '<div class="text-xs text-gray-400 py-2">還沒有成員，用下面的搜尋加入品項</div>';
+      } else {
+        box.innerHTML = combo.members.map((m, i) => {
+          const { hit, via, reason } = resolveComboMember(m, index);
+          const info = hit
+            ? `<span class="text-gray-700">${hit.product.name || ''}　${hit.variant.style || ''} ${hit.variant.size || ''}</span>
+               <span class="text-gray-400 ml-1">批價 ${hit.variant.wholesale || 0}　重量 ${hit.variant.weight || 0}kg　(比對：${via})</span>`
+            : `<span class="text-red-500">對不到：${reason || '未知'}</span>`;
+          return `<div class="flex items-center gap-2 text-xs py-1 border-b">
+            <span class="font-mono w-32 shrink-0">${m.barcode || m.code || ''}</span>
+            <input type="number" min="1" value="${m.qty || 1}" class="w-14 border rounded px-1 py-0.5"
+              onchange="setComboQty(${i}, this.value)">
+            <div class="flex-1">${info}</div>
+            <button onclick="removeComboMember(${i})" class="text-gray-400 hover:text-red-600 px-1">×</button>
+          </div>`;
+        }).join('');
+      }
+      renderComboSearch();
+    }
+
+    function setComboQty(i, val) {
+      const combo = readRowCombo(comboEditorRow);
+      combo.members[i].qty = Math.max(1, parseInt(val, 10) || 1);
+      writeRowCombo(comboEditorRow, combo);
+      renderComboEditor();
+      recalcComboRow(comboEditorRow);
+    }
+
+    function removeComboMember(i) {
+      const combo = readRowCombo(comboEditorRow);
+      combo.members.splice(i, 1);
+      writeRowCombo(comboEditorRow, combo);
+      renderComboEditor();
+      recalcComboRow(comboEditorRow);
+    }
+
+    function renderComboSearch() {
+      const kw = (document.getElementById('comboSearch').value || '').trim();
+      const box = document.getElementById('comboSearchResult');
+      if (!kw) { box.innerHTML = ''; return; }
+      const db = getDB();
+      const hits = [];
+      for (const p of Object.values(db)) {
+        for (const v of (p.variants || [])) {
+          if (!matchKeywords(`${p.code} ${p.name || ''} ${v.barcode || ''} ${v.style || ''} ${v.size || ''}`, kw)) continue;
+          hits.push({ p, v });
+          if (hits.length >= 30) break;
+        }
+        if (hits.length >= 30) break;
+      }
+      box.innerHTML = hits.length
+        ? hits.map(h => `<div class="flex items-center gap-2 text-xs py-1 hover:bg-gray-50 cursor-pointer"
+              onclick="addComboMember(${JSON.stringify(String(h.v.barcode || '')).replace(/"/g, '&quot;')}, ${JSON.stringify(String(h.p.code || '')).replace(/"/g, '&quot;')})">
+            <span class="font-mono w-32 shrink-0">${h.v.barcode || '（無條碼）'}</span>
+            <span class="flex-1">${h.p.name || ''}　${h.v.style || ''} ${h.v.size || ''}</span>
+            <span class="text-gray-400">批價 ${h.v.wholesale || 0}</span>
+          </div>`).join('')
+        : '<div class="text-xs text-gray-400 py-1">找不到符合的品項</div>';
+    }
+
+    function addComboMember(barcode, code) {
+      const combo = readRowCombo(comboEditorRow) || { members: [] };
+      const key = barcode || code;
+      const exist = combo.members.find(m => (m.barcode || m.code) === key);
+      if (exist) exist.qty = (parseInt(exist.qty, 10) || 1) + 1;
+      else combo.members.push({ barcode, code, qty: 1 });
+      writeRowCombo(comboEditorRow, combo);
+      document.getElementById('comboSearch').value = '';
+      renderComboEditor();
+      recalcComboRow(comboEditorRow);
+    }
+
     // ===== 商品編號／品項條碼規則 =====
     //   SH 0S 0001 00
     //   ├倉庫 ├材積 ├四位流水號 └兩位規格流水號（00 是商品本身，規格從 01 起）
@@ -2946,6 +3169,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       tr.innerHTML = `
         <td class="border px-1 py-1 bg-gray-50"><input class="v-barcode w-28 border-0 bg-transparent px-1 text-sm font-mono" type="text" value="${d.barcode||''}" placeholder="—"
           oninput="this.dataset.manual='1';calcVariant(this.closest('tr'))"></td>
+        <td class="border px-1 py-1 bg-indigo-50 whitespace-nowrap">
+          <select class="v-kind border-0 bg-transparent text-sm" onchange="onVariantKindChange(this.closest('tr'))">
+            <option value="normal" ${(d.kind||'normal')==='normal'?'selected':''}>一般</option>
+            <option value="combo" ${d.kind==='combo'?'selected':''}>複合</option>
+          </select>
+          <button class="v-combo-btn text-xs text-indigo-600 hover:underline ml-1" onclick="openComboEditor(this.closest('tr'))" style="display:none">成員</button>
+          <div class="v-combo-summary text-xs text-gray-400"></div>
+        </td>
         <td class="border px-1 py-1"><input class="v-style w-20 border-0 bg-transparent px-1 text-sm" type="text" value="${d.style||''}" placeholder="紅色"></td>
         <td class="border px-1 py-1"><input class="v-size w-14 border-0 bg-transparent px-1 text-sm" type="text" value="${d.size||''}" placeholder="F"></td>
         <td class="border px-1 py-1"><input class="v-wholesale w-20 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.01" value="${d.wholesale||''}" placeholder="0"
@@ -2996,6 +3227,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       tbody.appendChild(tr);
       // 載入／匯入進來的列要在 autoBarcode 之前就鎖住，否則條碼會先被覆蓋掉才鎖
       if (opts && opts.noauto) tr.dataset.noauto = '1';
+      if (d.combo) writeRowCombo(tr, d.combo);
+      onVariantKindChange(tr);
       autoBarcode(tr);
       refreshVariantImageSelects();
       if (d.wholesale || d.weight) calcVariant(tr);
@@ -3455,7 +3688,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       try { return JSON.parse(localStorage.getItem(PRODUCT_DB_KEY) || '{}'); }
       catch(e) { return {}; }
     }
-    function setDB(db) { localStorage.setItem(PRODUCT_DB_KEY, JSON.stringify(db)); }
+    function setDB(db) { localStorage.setItem(PRODUCT_DB_KEY, JSON.stringify(db)); invalidateItemIndex(); }
 
     function syncDescriptionFromFields() {
       const material   = pVal('p_material').trim();
@@ -4274,6 +4507,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         salesMode:    tr.querySelector('.v-sales-mode').value,
         barcode:      tr.querySelector('.v-barcode').value.trim(),
         barcodeManual: !!tr.querySelector('.v-barcode').dataset.manual,
+        kind:         tr.querySelector('.v-kind').value,
+        combo:        readRowCombo(tr),
         sku1688:      readRowSku1688(tr),
       }));
     }
@@ -4285,9 +4520,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const r = i + 1;
         if (!v.style)      errors.push(`第${r}列：樣式必填`);
         if (!v.size)       errors.push(`第${r}列：尺寸必填`);
-        if (!v.wholesale)  errors.push(`第${r}列：廠商批價必填`);
-        if (!v.vendorCode) errors.push(`第${r}列：廠商料號必填`);
-
+        if (v.kind === 'combo') {
+          // 複合列沒有自己的料號，批價與重量是成員加總出來的，
+          // 該檢查的是「成員設好了沒、對不對得到」。
+          const members = (v.combo && v.combo.members) || [];
+          if (!members.length) { errors.push(`第${r}列：複合商品還沒有設定成員`); return; }
+          if (!v.wholesale) errors.push(`第${r}列：複合商品的成員對不到本機資料，批價算不出來`);
+        } else {
+          if (!v.wholesale)  errors.push(`第${r}列：廠商批價必填`);
+          if (!v.vendorCode) errors.push(`第${r}列：廠商料號必填`);
+        }
       });
       return errors;
     }
@@ -4298,10 +4540,18 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (!code || !name) { alert('請填寫商品編號和商品名稱！'); return; }
       if (!code.endsWith('00') && !confirm('商品編號尾數不是 00，確定繼續？')) return;
 
-      const variants = getVariants();
-      if (variants.length === 0) { alert('請至少新增一筆規格！'); return; }
-      const errs = validateVariants(variants);
+      const allVariants = getVariants();
+      if (allVariants.length === 0) { alert('請至少新增一筆規格！'); return; }
+      const errs = validateVariants(allVariants);
       if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
+
+      // USALE 的複合商品是另一套資料，不從這裡建，所以複合規格一律排除
+      const variants = allVariants.filter(v => v.kind !== 'combo');
+      const skipped = allVariants.length - variants.length;
+      if (!variants.length) {
+        alert('這個商品的規格全部都是複合商品，USALE 建立範本沒有東西可以匯出。');
+        return;
+      }
 
       const note = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
       const header = ['商品編號','商品名稱','樣式','尺寸','庫存量','售價','雜項成本','存貨成本','重量','廠商',' 廠商料號','廠商批價','倉庫儲位','品項條碼','銷售模式(可追/售完/下架)','安全庫存','售價模式(系統/通路)','商品備註','規格備註','長','寬','高','交貨天數','有效天數','商品標籤','稅別','商品圖外部連結','商品連結'];
@@ -4326,6 +4576,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       XLSX.utils.book_append_sheet(wb, ws, '20100918_商品資料(從網頁匯入)');
       XLSX.writeFile(wb, `${code}_USALE建立.xlsx`);
       autoSave();
+      // 排除掉的規格要講出來，不然使用者會以為漏匯了
+      if (skipped) alert(`匯出完成。\n\n已排除 ${skipped} 個複合商品規格（USALE 的複合商品另外建，不從這裡匯入）。`);
     }
 
     function exportWebsiteXLSX() {
@@ -5050,6 +5302,156 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     // 取第一列（商品層級那列）某欄的值
     function r0(rows, i) { return String((rows[0] || [])[i] || '').trim(); }
+
+    // ===== 匯入 USALE 複合商品資料 =====
+    // 來源是 USALE 的「複合商品資料」工作表：一列一個成員，靠複合編號歸群。
+    // 同一個成員重複出現代表數量（USALE 沒有數量欄位，是用重複列表示的）。
+    // 歸屬規則：成員全來自同一個母商品 → 掛成那個商品的一個複合規格；
+    //           跨多個母商品（純福袋）→ 自成一個獨立商品。
+    const COMBO_PARENT_RE = /-\d+$/;
+
+    function comboMemberParent(code) {
+      return String(code || '').trim().toUpperCase().replace(COMBO_PARENT_RE, '');
+    }
+
+    async function importCompositeProducts(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const wb = XLSX.read(await file.arrayBuffer());
+        const sheetName = wb.SheetNames.find(n => n.includes('複合')) || wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
+        if (!rows.length || !('複合編號' in rows[0])) {
+          alert('這份檔案看起來不是 USALE 的複合商品資料（找不到「複合編號」欄位）');
+          return;
+        }
+
+        // 依複合編號歸群，重複成員累加數量
+        const byId = new Map();
+        rows.forEach(r => {
+          const id = String(r['複合編號'] || '').trim();
+          if (!id) return;
+          if (!byId.has(id)) {
+            byId.set(id, {
+              comboId: id,
+              name: String(r['複合名稱'] || '').trim(),
+              type: String(r['複合類型'] || '').trim(),
+              priceMode: String(r['售價模式'] || '').trim(),
+              priceAlloc: String(r['售價分配'] || '').trim(),
+              sell: r['售價'],
+              members: new Map(),
+            });
+          }
+          const g = byId.get(id);
+          const code = String(r['商品編號'] || '').trim();
+          const barcode = String(r['品項條碼'] || '').trim();
+          const key = (barcode || code).toUpperCase();
+          if (!key) return;
+          if (g.members.has(key)) g.members.get(key).qty++;
+          else g.members.set(key, { barcode, code, qty: 1 });
+        });
+
+        const db = getDB();
+        const index = buildItemIndex();
+        let attached = 0, standalone = 0, updatedProducts = new Set();
+        const unresolvedCombos = [];
+
+        for (const g of byId.values()) {
+          const members = [...g.members.values()];
+          const parents = [...new Set(members.map(m => comboMemberParent(m.code)).filter(Boolean))];
+
+          // 成員對得到幾個
+          const bad = members.filter(m => !resolveComboMember(m, index).hit).length;
+          if (bad) unresolvedCombos.push(`${g.comboId} ${g.name}（${bad}/${members.length} 個成員對不到）`);
+
+          const variant = {
+            style: g.name || g.comboId,
+            size: 'F',
+            kind: 'combo',
+            combo: {
+              comboId: g.comboId,
+              type: g.type,
+              priceMode: g.priceMode,
+              priceAlloc: g.priceAlloc,
+              members,
+            },
+            sell: g.sell || '',
+            wholesale: '', weight: '', stock: 0, preorder: 500,
+            deliveryDays: '10', salesMode: '可追', barcode: '', barcodeManual: true,
+          };
+
+          // 成員同屬一個母商品，而且那個商品在本機找得到 → 掛成它的一個規格
+          let host = null;
+          if (parents.length === 1) {
+            const direct = index.byCode.get(parents[0]);
+            if (direct) host = direct.product;
+            else {
+              // 成員可能是用品項條碼記的，從第一個對得到的成員回推母商品
+              for (const m of members) {
+                const { hit } = resolveComboMember(m, index);
+                if (hit) { host = hit.product; break; }
+              }
+            }
+          }
+
+          if (host) {
+            host.variants = host.variants || [];
+            const at = host.variants.findIndex(v => v.combo && v.combo.comboId === g.comboId);
+            if (at >= 0) host.variants[at] = variant; else host.variants.push(variant);
+            db[host.code] = host;
+            updatedProducts.add(host.code);
+            attached++;
+          } else {
+            const code = g.comboId;
+            const exist = db[code] || {};
+            db[code] = {
+              ...exist,
+              code,
+              name: g.name || code,
+              vendor: exist.vendor || '',
+              variants: [variant],
+            };
+            updatedProducts.add(code);
+            standalone++;
+          }
+        }
+
+        setDB(db);
+        renderSavedList();
+
+        let uploaded = 0;
+        if (shareToken) {
+          const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
+          const codes = [...updatedProducts];
+          for (let i = 0; i < codes.length; i += 50) {
+            const chunk = codes.slice(i, i + 50);
+            const { ok, data } = await shareApi('/api/products', {
+              method: 'PUT',
+              body: JSON.stringify({ items: chunk.map(c => ({ code: c, data: db[c] })), force: true, updatedBy }),
+            });
+            if (ok && Array.isArray(data.saved)) uploaded += data.saved.length;
+          }
+          await refreshSharedList();
+        }
+
+        alert(`複合商品匯入完成\n`
+          + `・共 ${byId.size} 個複合商品\n`
+          + `・掛到既有商品成為複合規格：${attached} 個\n`
+          + `・成員跨多個商品，建成獨立商品：${standalone} 個\n`
+          + `・影響 ${updatedProducts.size} 個商品`
+          + (shareToken ? `，已上傳共用庫 ${uploaded} 個` : '，未連線共用庫，僅存本機')
+          + (unresolvedCombos.length
+              ? `\n\n⚠ 有 ${unresolvedCombos.length} 個複合商品的成員對不到本機資料，`
+                + `批價與重量會是空的，需要人工處理：\n`
+                + unresolvedCombos.slice(0, 10).join('\n')
+                + (unresolvedCombos.length > 10 ? `\n…另有 ${unresolvedCombos.length - 10} 個` : '')
+              : ''));
+      } catch (e) {
+        alert('匯入失敗：' + e.message);
+      } finally {
+        event.target.value = '';
+      }
+    }
 
     // ===== 匯入 USALE 商品資料 =====
     // 來源為 USALE 匯出的「商品資料」工作表，一列一個規格，以商品編號歸群為商品。
