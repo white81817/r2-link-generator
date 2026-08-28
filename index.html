@@ -2055,8 +2055,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <button onclick="cleanLegacyComboVariants()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="舊版把複合商品塞在商品的規格列裡，這支把殘留的清掉">🧹 清理舊複合規格</button>
             <button onclick="analyzeCodePatterns()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="看共用庫裡的商品編號有幾種寫法、哪些不符合 SH/CF + 0S/1S + 四位數 + 00 的規則">🔢 檢查編號規則</button>
             <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded px-3 py-1 hidden font-medium" title="商品本身有標籤，只是共用庫的清單索引沒存到，用標籤篩選時會漏掉它們。按一次會從商品讀回來補進索引，不會改到商品內容"></button>
+            <button onclick="rebuildIndexNow()" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 rounded px-3 py-1" title="重算共用庫的清單索引與品項索引（複合商品比對成員靠品項索引）">🔧 重建索引</button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
             <span id="shareCount" class="text-xs text-gray-400"></span>
+            <span id="shareItemCount" class="text-xs"></span>
           </div>
           <div id="shareTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
 
@@ -2748,11 +2750,50 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     let sharedItems = null;
 
     async function loadSharedItems() {
-      if (!shareToken) { sharedItems = null; return; }
-      const { ok, data } = await shareApi('/api/products/items');
+      if (!shareToken) { sharedItems = null; renderItemCount(); return; }
+      const { ok, status, data } = await shareApi('/api/products/items');
       sharedItems = ok ? (data.items || {}) : null;
+      lastItemsError = ok ? '' : (data.error || `HTTP ${status}`);
       invalidateItemIndex();
+      renderItemCount();
       return sharedItems;
+    }
+
+    let lastItemsError = '';
+
+    // 索引狀態常駐顯示——看不到就只能猜，猜錯就會以為是資料壞掉
+    function renderItemCount() {
+      const el = document.getElementById('shareItemCount');
+      if (!el) return;
+      if (!shareToken) { el.textContent = ''; return; }
+      if (sharedItems === null) {
+        el.textContent = `品項索引：讀取失敗（${lastItemsError || '未知'}）`;
+        el.className = 'text-xs text-red-500';
+        return;
+      }
+      const n = Object.keys(sharedItems).length;
+      el.textContent = `品項索引 ${n} 筆`;
+      el.className = 'text-xs ' + (n ? 'text-gray-400' : 'text-red-500');
+    }
+
+    // 手動重建：一定會跑、一定會回報結果，不像自動那條會安靜退場
+    async function rebuildIndexNow() {
+      if (!shareToken) { alert('請先連線共用商品庫'); return; }
+      setShareStatus('重建索引中…（商品多時要跑一段時間）');
+      const res = await shareApi('/api/products/rebuild-list', { method: 'POST', timeout: 180000 });
+      if (!res.ok) {
+        setShareStatus('');
+        alert('重建失敗：' + (res.data.error || `HTTP ${res.status}`)
+            + (res.status === 404 ? '\n\n（worker 還沒部署到有這個端點的版本，'
+                                  + '請確認 /api/health 的 version 是 2026-08-28-combos-v2）' : ''));
+        return;
+      }
+      const again = await shareApi('/api/products');
+      if (again.ok) { sharedList = again.data.list || []; renderSharedList(); }
+      await loadSharedItems();
+      setShareStatus('');
+      alert(`重建完成\n・商品清單：${res.data.count} 筆\n・品項索引：${res.data.items != null ? res.data.items : (sharedItems ? Object.keys(sharedItems).length : 0)} 筆`
+          + (res.data.missing && res.data.missing.length ? `\n・有 ${res.data.missing.length} 筆讀不到完整資料` : ''));
     }
 
     // 成員一律以共用商品庫為準（本機已經不再存商品）
@@ -3936,6 +3977,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.getElementById('sharePanel').classList.remove('hidden');
       setShareStatus(`已連線（${localStorage.getItem(SHARE_USER_KEY) || ''}${shareRole === 'admin' ? '・管理員' : ''}）`, 'text-green-600');
       renderSharedList();
+      loadSharedItems();   // 連上就把品項索引拉下來，狀態列才看得到筆數
     }
 
     function shareLogout() {
@@ -3951,6 +3993,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     let autoRebuildTried = false;
 
     async function refreshSharedList() {
+      // 手動按重新整理就該重試一次自動重建，否則第一次失敗後永遠不會再試
+      autoRebuildTried = false;
       const { ok, data } = await shareApi('/api/products');
       if (!ok) { setShareStatus('讀取失敗，請重新連線', 'text-red-500'); return; }
       sharedList = data.list || [];
@@ -3972,8 +4016,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           setShareStatus(`索引已更新（品項 ${sharedItems ? Object.keys(sharedItems).length : 0} 筆）`);
           setTimeout(() => setShareStatus(''), 4000);
         } else {
-          // 自動補失敗就安靜退場，畫面上的手動按鈕還在
-          setShareStatus('');
+          // 安靜退場的話使用者只會看到「沒反應」，分不出是不用建還是建失敗
+          setShareStatus(`索引自動重建失敗（${res.data.error || 'HTTP ' + res.status}），請按〔🔧 重建索引〕`, 'text-red-500');
         }
       }
     }
