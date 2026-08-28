@@ -2389,13 +2389,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-left whitespace-nowrap bg-indigo-50">類型<br><span class="font-normal text-gray-400">複合＝組合品</span></th>
                 <th class="border px-2 py-1 text-left whitespace-nowrap">
                   樣式 <span class="text-red-400">*</span>
-                  <div class="text-gray-400 font-normal">1shop規格名稱1</div>
-                  <input id="opt1_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="1shop名稱" value="樣式" oninput="onMomoMemoKeyChange()">
+                  <div class="text-gray-400 font-normal">上架規格名稱1</div>
+                  <input id="opt1_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="上架用名稱" value="款式" oninput="onMomoMemoKeyChange()">
                 </th>
                 <th class="border px-2 py-1 text-left whitespace-nowrap">
                   尺寸 <span class="text-red-400">*</span>
-                  <div class="text-gray-400 font-normal">1shop規格名稱2</div>
-                  <input id="opt2_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="1shop名稱" value="尺寸" oninput="onMomoMemoKeyChange()">
+                  <div class="text-gray-400 font-normal">上架規格名稱2</div>
+                  <input id="opt2_name" type="text" class="w-full border rounded px-1 py-0.5 text-xs font-normal mt-1 bg-white" placeholder="上架用名稱" value="規格" oninput="onMomoMemoKeyChange()">
                 </th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">廠商批價 <span class="text-red-400">*</span></th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap">廠商料號 <span class="text-red-400">*</span></th>
@@ -3222,6 +3222,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       // 取號是非同步的，面板在那之前就畫好了，要再畫一次才看得到編號
       if (comboEditorRow === tr) renderComboEditor();
     }
+
+    // 規格表的欄位叫「樣式／尺寸」是我們內部的說法；
+    // 上架到 1shop／蝦皮／mo+ 時用的是下面這兩個可編輯的名稱，預設「款式／規格」。
+    // momo購物網那份模板沒有規格名稱欄（用的是 D1102 的規格代碼），只影響自動文案。
+    const OPT1_DEFAULT = '款式';
+    const OPT2_DEFAULT = '規格';
 
     // ===== 商品編號／品項條碼規則 =====
     //   SH 0S 0001 00
@@ -4531,8 +4537,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       };
       renderImageResult(productImages.length ? `已載入 ${productImages.length} 張圖片` : '', false);
       applyMomoData(data.momo);
-      setVal('opt1_name', data.opt1Name || '樣式');
-      setVal('opt2_name', data.opt2Name || '尺寸');
+      setVal('opt1_name', data.opt1Name || OPT1_DEFAULT);
+      setVal('opt2_name', data.opt2Name || OPT2_DEFAULT);
       if (document.getElementById('p_web_status')) document.getElementById('p_web_status').value = data.webStatus || '上架';
       if (document.getElementById('p_selling_mode')) document.getElementById('p_selling_mode').value = data.sellingMode || '自動';
 
@@ -4705,8 +4711,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const errs = validateVariants(variants);
       if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
 
-      const opt1Name = pVal('opt1_name') || '樣式';
-      const opt2Name = pVal('opt2_name') || '尺寸';
+      const opt1Name = pVal('opt1_name') || OPT1_DEFAULT;
+      const opt2Name = pVal('opt2_name') || OPT2_DEFAULT;
       const hasSize = variants.some(v => v.size);
 
       const header = ['產品ID(請勿更動)','類型(一般產品/規格產品/子項)','名稱','規格選項1名稱','規格選項1','規格選項2名稱','規格選項2','加強文字','產品說明','產品狀態(上架/下架)','原價','特價','成本','貨號','已售出數量','使用庫存(啟用/關閉)','現貨數量','預購數量','預購說明','正在銷售(自動/現貨/預購)','撿貨說明','分類(多個用,隔開)'];
@@ -4863,8 +4869,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (errs.length) { alert('請修正以下必填欄位：\n\n' + errs.join('\n')); return; }
 
       const desc  = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
-      const opt1  = pVal('opt1_name') || '樣式';
-      const opt2  = pVal('opt2_name') || '尺寸';
+      const opt1  = pVal('opt1_name') || OPT1_DEFAULT;
+      const opt2  = pVal('opt2_name') || OPT2_DEFAULT;
 
       const imgs  = getPlatformImages('shopee');
       const header = getShopeeHeader();
@@ -5010,8 +5016,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (missing.length && !confirm(`momo 必填欄位尚未填寫：${missing.join('、')}\n仍要匯出嗎？（可匯出後在 Excel 補上）`)) return;
 
       const desc  = [pVal('p_highlight'), pVal('p_description')].filter(Boolean).join('\n');
-      const opt1  = pVal('opt1_name') || '樣式';
-      const opt2  = pVal('opt2_name') || '尺寸';
+      const opt1  = pVal('opt1_name') || OPT1_DEFAULT;
+      const opt2  = pVal('opt2_name') || OPT2_DEFAULT;
       const imgs   = getPlatformImages('momo');
       const adImg  = getPlatformImages('momoAd')[0] || '';
       const warranty = pVal('p_momo_warranty');
@@ -5274,8 +5280,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const warranty = pVal('p_momo_warranty');
       const shipCode = pVal('p_momo_ship_code').trim();
 
-      const opt1 = pVal('opt1_name') || '樣式';
-      const opt2 = pVal('opt2_name') || '尺寸';
+      const opt1 = pVal('opt1_name') || OPT1_DEFAULT;
+      const opt2 = pVal('opt2_name') || OPT2_DEFAULT;
       const autoText = momoAutoText(variants, opt1, opt2);
       const auto = {
         warrantyNote: pVal('p_momo_warranty_note').trim() || autoText.warrantyNote,
@@ -5586,8 +5592,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             highlight:   '',
             tagsChecked: tags.checked,
             tagsCustom:  tags.custom.join(','),
-            opt1Name:    '樣式',
-            opt2Name:    '尺寸',
+            opt1Name:    OPT1_DEFAULT,
+            opt2Name:    OPT2_DEFAULT,
             variants:    [],
             savedAt:     new Date().toLocaleString('zh-TW'),
             importedFrom: 'usale',
@@ -5730,8 +5736,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setVal('p_platform_img_convert', '1');
       applyMomoData(null);
       document.getElementById('p_preorder_note').value = '(3~10個工作天出貨)';
-      document.getElementById('opt1_name').value = '樣式';
-      document.getElementById('opt2_name').value = '尺寸';
+      document.getElementById('opt1_name').value = OPT1_DEFAULT;
+      document.getElementById('opt2_name').value = OPT2_DEFAULT;
       document.querySelectorAll('#p_tags .tag-cb').forEach(cb => cb.checked = false);
       document.getElementById('p_code_warning').style.display = 'none';
       document.getElementById('variantRows').innerHTML = '';
