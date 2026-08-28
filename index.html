@@ -2077,6 +2077,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <div id="uploadTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
             <div id="uploadPickList" class="max-h-52 overflow-y-auto bg-white border rounded p-2 mb-1"></div>
             <div id="uploadPager" class="mb-2"></div>
+            <div id="uploadProgressBox" class="hidden mb-2">
+              <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div id="uploadProgressBar" class="bg-amber-500 h-2 transition-all" style="width:0%"></div>
+              </div>
+              <div id="uploadProgress" class="text-xs text-gray-700 mt-1 font-medium"></div>
+            </div>
             <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-1 cursor-pointer">
               <input type="checkbox" id="skipExistingOnUpload" class="w-4 h-4" checked onchange="refreshUploadExistsLabel()">
               共用庫已經有的商品編號就<b>跳過</b>，不要覆蓋（取消勾選＝直接覆蓋掉共用庫的版本）
@@ -2086,9 +2092,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               上傳成功後，把這些商品從本機儲存中移除（共用庫已有一份，不需重複保留）
             </label>
             <div class="flex gap-2 items-center">
-              <button onclick="doUploadSelected()" class="bg-amber-100 hover:bg-amber-200 text-xs rounded px-3 py-1.5 font-medium">開始上傳</button>
-              <button onclick="closeUploadPicker()" class="text-xs text-gray-400 hover:text-gray-600 px-2">取消</button>
-              <span id="uploadProgress" class="text-xs text-gray-600"></span>
+              <button id="uploadStartBtn" onclick="doUploadSelected()" class="bg-amber-100 hover:bg-amber-200 text-xs rounded px-3 py-1.5 font-medium">開始上傳</button>
+              <button id="uploadCancelBtn" onclick="closeUploadPicker()" class="text-xs text-gray-400 hover:text-gray-600 px-2">取消</button>
             </div>
           </div>
 
@@ -3380,13 +3385,26 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       el.className = 'text-xs ' + (cls || 'text-gray-400');
     }
 
+    // 沒有逾時的話，worker 掛住時畫面會永遠停在「上傳中」，看不出是慢還是死了
+    const SHARE_API_TIMEOUT = 60000;
+
     async function shareApi(path, options) {
-      const res = await fetch(SHARE_API + path, {
-        ...options,
-        headers: { 'Content-Type': 'application/json', 'X-Quote-Token': shareToken, ...(options && options.headers) },
-      });
-      const data = await res.json().catch(() => ({}));
-      return { ok: res.ok, status: res.status, data };
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), (options && options.timeout) || SHARE_API_TIMEOUT);
+      try {
+        const res = await fetch(SHARE_API + path, {
+          ...options,
+          signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json', 'X-Quote-Token': shareToken, ...(options && options.headers) },
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, status: res.status, data };
+      } catch (e) {
+        const timedOut = e.name === 'AbortError';
+        return { ok: false, status: 0, data: { error: timedOut ? '連線逾時（超過 60 秒沒有回應）' : ('連線失敗：' + e.message) } };
+      } finally {
+        clearTimeout(timer);
+      }
     }
 
     async function shareLogin() {
@@ -3680,6 +3698,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function closeUploadPicker() {
       document.getElementById('uploadPicker').classList.add('hidden');
+      document.getElementById('uploadProgressBox').classList.add('hidden');
     }
 
     // 「全選」作用在整個篩選結果（跨頁），不是只有當頁，不然搜尋等於白做
@@ -3708,8 +3727,27 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const db = getDB();
       const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
       const done = [], failed = [], skipped = [];
+      const progressBox = document.getElementById('uploadProgressBox');
       const progress = document.getElementById('uploadProgress');
-      const setProgress = (t) => { if (progress) progress.textContent = t; };
+      const bar = document.getElementById('uploadProgressBar');
+      const startBtn = document.getElementById('uploadStartBtn');
+      const cancelBtn = document.getElementById('uploadCancelBtn');
+      const errors = [];
+
+      // 沒有回饋時使用者只會看到畫面不動，分不出是在跑還是壞了。
+      // 進度條 + 按鈕本身變成狀態顯示，同時擋掉重複點擊。
+      const setProgress = (t, ratio) => {
+        if (progress) progress.textContent = t;
+        if (bar && ratio !== undefined) bar.style.width = Math.round(ratio * 100) + '%';
+      };
+      progressBox.classList.remove('hidden');
+      startBtn.disabled = true;
+      startBtn.className = 'bg-gray-200 text-gray-500 text-xs rounded px-3 py-1.5 font-medium cursor-not-allowed';
+      startBtn.textContent = '上傳中…';
+      cancelBtn.classList.add('hidden');
+      setProgress(`準備上傳 ${picked.length} 筆…`, 0);
+      // 讓瀏覽器先把上面的狀態畫出來，再開始送請求
+      await new Promise(r => setTimeout(r, 50));
 
       // 一筆一趟太慢：162 個商品就是 162 次往返，而且 worker 每筆都會重寫
       // product:list，KV 對同一個 key 有寫入頻率限制，寫愈快被節流得愈兇。
@@ -3718,7 +3756,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       let bulkSupported = true;
       for (let i = 0; i < picked.length && bulkSupported; i += BATCH) {
         const chunk = picked.slice(i, i + BATCH);
-        setProgress(`上傳中… ${Math.min(i + chunk.length, picked.length)} / ${picked.length}`);
+        setProgress(`上傳中… ${i} / ${picked.length}（第 ${Math.floor(i / BATCH) + 1} 批，共 ${Math.ceil(picked.length / BATCH)} 批）`, i / picked.length);
         const { ok, status, data } = await shareApi('/api/products', {
           method: 'PUT',
           body: JSON.stringify({ items: chunk.map(code => ({ code, data: db[code] })), force: true, skipExisting, updatedBy }),
@@ -3731,26 +3769,35 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         } else if (status === 404 || status === 405) {
           // worker 還沒部署到有批次端點的版本，退回逐筆上傳而不是整批失敗
           bulkSupported = false;
+          setProgress('共用庫還是舊版，改用逐筆上傳（會比較慢）…', 0);
         } else {
           failed.push(...chunk);
+          if (data && data.error) errors.push(`HTTP ${status}：${data.error}`);
+          else errors.push(`HTTP ${status}`);
         }
+        setProgress(`上傳中… ${Math.min(i + chunk.length, picked.length)} / ${picked.length}`, Math.min(i + chunk.length, picked.length) / picked.length);
       }
 
       if (!bulkSupported) {
         done.length = 0; failed.length = 0; skipped.length = 0;
         for (let i = 0; i < picked.length; i++) {
           const code = picked[i];
-          setProgress(`上傳中（逐筆模式）… ${i + 1} / ${picked.length}`);
+          setProgress(`上傳中（逐筆模式）… ${i + 1} / ${picked.length}`, (i + 1) / picked.length);
           // 舊版 worker 沒有 skipExisting，改用共用庫清單在前端擋掉
           if (skipExisting && sharedList.some(x => x.code === code)) { skipped.push(code); continue; }
-          const { ok } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
+          const { ok, status, data } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
             method: 'PUT',
             body: JSON.stringify({ data: db[code], force: true, updatedBy }),
           });
-          ok ? done.push(code) : failed.push(code);
+          if (ok) done.push(code);
+          else { failed.push(code); if (errors.length < 3) errors.push(`${code}：${(data && data.error) || 'HTTP ' + status}`); }
         }
       }
-      setProgress('');
+      setProgress(`完成：成功 ${done.length}／跳過 ${skipped.length}／失敗 ${failed.length}`, 1);
+      startBtn.disabled = false;
+      startBtn.className = 'bg-amber-100 hover:bg-amber-200 text-xs rounded px-3 py-1.5 font-medium';
+      startBtn.textContent = '開始上傳';
+      cancelBtn.classList.remove('hidden');
 
       // 只移除確定上傳成功的，失敗的留在本機以免資料遺失
       if (removeLocal && done.length) {
@@ -3764,7 +3811,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       await refreshSharedList();
       alert(`上傳完成：成功 ${done.length} 個`
         + (skipped.length ? `，跳過 ${skipped.length} 個（共用庫已有）` : '')
-        + (failed.length ? `，失敗 ${failed.length} 個（${failed.join('、')}）` : '')
+        + (failed.length ? `，失敗 ${failed.length} 個（${failed.slice(0, 20).join('、')}${failed.length > 20 ? '…' : ''}）` : '')
+        + (errors.length ? `\n\n失敗原因：\n${[...new Set(errors)].slice(0, 3).join('\n')}` : '')
         + (removeLocal && done.length ? `\n已從本機移除 ${done.length} 個（跳過與失敗的都保留在本機）` : '')
         + (skipped.length ? `\n\n跳過的：${skipped.join('、')}` : ''));
     }
