@@ -2051,7 +2051,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('share')">
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
             <button onclick="openUploadPicker()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
-            <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 rounded px-3 py-1 hidden" title="舊資料的摘要沒有標籤欄位，按一次補齊就能用標籤篩選">🏷 重建標籤索引</button>
+            <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded px-3 py-1 hidden font-medium" title="共用庫的清單是在加入標籤功能之前建的，沒有存標籤。按一次補上就會出現標籤篩選列；只動索引，不會改到商品內容">🏷 按這裡補上標籤，才能用標籤篩選</button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
             <span id="shareCount" class="text-xs text-gray-400"></span>
           </div>
@@ -3556,6 +3556,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       // 舊資料的摘要沒有 tags 欄位，標籤篩選會漏掉它們——有就把補齊按鈕露出來
       const needRebuild = sharedList.some(it => !Array.isArray(it.tags));
       document.getElementById('rebuildTagsBtn').classList.toggle('hidden', !needRebuild);
+      // 標籤列還是空的時候要說清楚原因，不然使用者只會覺得「怎麼沒有標籤可以選」
+      const tagBox = document.getElementById('shareTagFilter');
+      if (needRebuild && tagBox && !tagBox.innerHTML) {
+        tagBox.innerHTML = '<span class="text-xs text-gray-400">共用庫的清單還沒有標籤資料，按上面的〔🏷 補上標籤〕就會出現篩選列。</span>';
+      }
 
       const shown = sharedList.filter(it =>
         passTagFilter('share', it) &&
@@ -3593,7 +3598,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // 摘要清單後來才加 tags 欄位，舊資料沒有。這支請 worker 依完整資料重算一次。
     async function rebuildSharedTags() {
       const missing = sharedList.filter(it => !Array.isArray(it.tags)).length;
-      if (!confirm(`共用庫有 ${missing} 筆的摘要沒有標籤資料，會漏出標籤篩選。\n要重建索引嗎？（只動摘要清單，不改商品內容）`)) return;
+      if (!confirm(`共用庫的清單是在加入標籤功能之前建的，其中 ${missing} 筆沒有存標籤，`
+                 + `所以標籤篩選列是空的。\n\n按確定會請伺服器讀回每筆商品的完整資料、把標籤補進清單，`
+                 + `補完就能跟本機清單一樣用標籤篩選。\n只動清單索引，不會改到任何商品內容。`)) return;
       setShareStatus('重建中…');
       const { ok, status, data } = await shareApi('/api/products/rebuild-list', { method: 'POST' });
       if (!ok) {
