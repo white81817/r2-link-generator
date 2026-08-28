@@ -17,8 +17,11 @@
 
 ## 重要慣例
 
-- **Tailwind 是 2.2.19**，預設調色盤**沒有** orange/sky/teal/amber。
-  這些色系已在 `index.html` 開頭的 `<style>` 手動補上，新增顏色前先確認。
+- **Tailwind 是 2.2.19**，預設調色盤只有 gray/red/yellow/green/blue/indigo/purple/pink，
+  **沒有** orange/amber/teal/sky/emerald（也沒有 lime/cyan/violet/rose）。
+  這些色系已在 `index.html` 開頭的 `<style>` 依 Tailwind v2 色值手動補上。
+  **缺定義時背景是透明的，白字按鈕會整顆看不見**——加新顏色前務必先確認那個區塊有沒有，
+  沒有就連 `hover:` 版本一起補。已踩過兩次：`bg-emerald-600`、`bg-orange-700`。
 - 前端無建置流程，直接改 `index.html`。修改後務必做 script 區塊語法檢查。
 - 改完一律推 `main`（Pages/Workers 自動部署），同時推工作分支。
 - Worker 的通行碼存於 Cloudflare 的 **Settings → Variables and Secrets**（執行時期那個，

@@ -14,31 +14,11 @@
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 
   <style>
-    /* ===== 補齊 Tailwind 2.2 預設調色盤沒有的色系 =====
        v2 預設只有 gray/red/yellow/green/blue/indigo/purple/pink，
-       用到 orange/sky/teal/amber 的 class 不存在會變透明，故在此補上（色值取自 Tailwind 官方）。 */
-    .bg-orange-50  { background-color:#fff7ed }
-    .bg-orange-100 { background-color:#ffedd5 }
-    .bg-orange-500 { background-color:#f97316 }
-    .hover\:bg-orange-600:hover { background-color:#ea580c }
-    .border-orange-200 { border-color:#fed7aa }
-    .text-orange-700 { color:#c2410c }
-    .text-orange-800 { color:#9a3412 }
 
-    .bg-sky-600 { background-color:#0284c7 }
-    .hover\:bg-sky-700:hover { background-color:#0369a1 }
-    .border-sky-600 { border-color:#0284c7 }
-    .hover\:border-sky-400:hover { border-color:#38bdf8 }
-    .text-sky-600 { color:#0284c7 }
-    .hover\:text-sky-600:hover { color:#0284c7 }
 
-    .bg-teal-50  { background-color:#f0fdfa }
-    .bg-teal-600 { background-color:#0d9488 }
-    .hover\:bg-teal-700:hover { background-color:#0f766e }
     .hover\:ring-teal-400:hover { --tw-ring-color:#2dd4bf; box-shadow:0 0 0 2px #2dd4bf }
 
-    .bg-amber-100 { background-color:#fef3c7 }
-    .hover\:bg-amber-200:hover { background-color:#fde68a }
 
     /* =================== 分頁導航 =================== */
     .tab-nav {
@@ -250,7 +230,61 @@
       #tab-link .button-group { flex-direction: column; gap: 0.5em; }
       #tab-link button { width: 100%; max-width: 600px; margin: 0 auto; }
     }
-  </style>
+  
+    /* Tailwind 2.2.19 的預設調色盤沒有 orange/amber/teal/sky/emerald，
+       這裡依 Tailwind v2 的色值補齊實際用到的。缺定義時背景會是透明的，
+       白字按鈕就整顆看不見——加新顏色前務必先確認這裡有沒有。 */
+    .bg-amber-100{background-color:#fef3c7}
+    .hover\:bg-amber-100:hover{background-color:#fef3c7}
+    .bg-amber-200{background-color:#fde68a}
+    .hover\:bg-amber-200:hover{background-color:#fde68a}
+    .bg-emerald-600{background-color:#059669}
+    .hover\:bg-emerald-600:hover{background-color:#059669}
+    .bg-emerald-700{background-color:#047857}
+    .hover\:bg-emerald-700:hover{background-color:#047857}
+    .bg-orange-100{background-color:#ffedd5}
+    .hover\:bg-orange-100:hover{background-color:#ffedd5}
+    .bg-orange-50{background-color:#fff7ed}
+    .hover\:bg-orange-50:hover{background-color:#fff7ed}
+    .bg-orange-500{background-color:#f97316}
+    .hover\:bg-orange-500:hover{background-color:#f97316}
+    .bg-orange-600{background-color:#ea580c}
+    .hover\:bg-orange-600:hover{background-color:#ea580c}
+    .bg-orange-700{background-color:#c2410c}
+    .hover\:bg-orange-700:hover{background-color:#c2410c}
+    .bg-orange-800{background-color:#9a3412}
+    .hover\:bg-orange-800:hover{background-color:#9a3412}
+    .bg-sky-50{background-color:#f0f9ff}
+    .hover\:bg-sky-50:hover{background-color:#f0f9ff}
+    .bg-sky-600{background-color:#0284c7}
+    .hover\:bg-sky-600:hover{background-color:#0284c7}
+    .bg-sky-700{background-color:#0369a1}
+    .hover\:bg-sky-700:hover{background-color:#0369a1}
+    .bg-teal-50{background-color:#f0fdfa}
+    .hover\:bg-teal-50:hover{background-color:#f0fdfa}
+    .bg-teal-600{background-color:#0d9488}
+    .hover\:bg-teal-600:hover{background-color:#0d9488}
+    .bg-teal-700{background-color:#0f766e}
+    .hover\:bg-teal-700:hover{background-color:#0f766e}
+    .border-orange-200{border-color:#fed7aa}
+    .hover\:border-orange-200:hover{border-color:#fed7aa}
+    .border-sky-400{border-color:#38bdf8}
+    .hover\:border-sky-400:hover{border-color:#38bdf8}
+    .border-sky-600{border-color:#0284c7}
+    .hover\:border-sky-600:hover{border-color:#0284c7}
+    .text-orange-600{color:#ea580c}
+    .hover\:text-orange-600:hover{color:#ea580c}
+    .text-orange-700{color:#c2410c}
+    .hover\:text-orange-700:hover{color:#c2410c}
+    .text-orange-800{color:#9a3412}
+    .hover\:text-orange-800:hover{color:#9a3412}
+    .text-sky-600{color:#0284c7}
+    .hover\:text-sky-600:hover{color:#0284c7}
+    .text-sky-700{color:#0369a1}
+    .hover\:text-sky-700:hover{color:#0369a1}
+    .text-sky-800{color:#075985}
+    .hover\:text-sky-800:hover{color:#075985}
+</style>
 </head>
 <body>
 
@@ -2031,11 +2065,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
   <div id="tab-product" style="display:none" class="bg-gray-50 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 py-8">
 
-      <div class="flex items-center justify-between mb-4">
-        <h1 class="text-2xl font-bold text-gray-800">📦 產品建立</h1>
+      <div class="flex items-center gap-3 mb-4">
         <button onclick="newProduct()" class="bg-emerald-600 text-white px-5 py-2 rounded-lg hover:bg-emerald-700 font-medium shadow">
           ＋ 新增商品
         </button>
+        <h1 class="text-2xl font-bold text-gray-800">📦 產品建立</h1>
       </div>
 
       <!-- 共用商品庫 -->
@@ -2063,7 +2097,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <span id="shareCount" class="text-xs text-gray-400"></span>
             <span id="shareItemCount" class="text-xs"></span>
             <span class="flex-1"></span>
-            <button onclick="document.getElementById('shareTools').classList.toggle('hidden')" class="text-xs text-gray-400 hover:text-gray-600">⋯ 工具</button>
+            <button onclick="toggleShareTools()" id="shareToolsBtn" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">⚙ 進階工具</button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
           </div>
           <div id="shareTools" class="hidden flex flex-wrap items-center gap-2 mb-2 bg-gray-50 rounded p-2">
@@ -2794,6 +2828,25 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       el.className = 'text-xs ' + (n ? 'text-gray-400' : 'text-red-500');
     }
 
+    // 進階工具展開與否要記住——收起來之後找不到按鈕是很煩的事
+    const SHARE_TOOLS_KEY = 'shareToolsOpen_v1';
+
+    function toggleShareTools() {
+      const box = document.getElementById('shareTools');
+      box.classList.toggle('hidden');
+      const open = !box.classList.contains('hidden');
+      try { localStorage.setItem(SHARE_TOOLS_KEY, open ? '1' : '0'); } catch {}
+      document.getElementById('shareToolsBtn').textContent = open ? '⚙ 收起工具' : '⚙ 進階工具';
+    }
+
+    function restoreShareTools() {
+      let open = false;
+      try { open = localStorage.getItem(SHARE_TOOLS_KEY) === '1'; } catch {}
+      if (!open) return;
+      document.getElementById('shareTools').classList.remove('hidden');
+      document.getElementById('shareToolsBtn').textContent = '⚙ 收起工具';
+    }
+
     // 手動重建：一定會跑、一定會回報結果，不像自動那條會安靜退場
     async function rebuildIndexNow() {
       if (!shareToken) { alert('請先連線共用商品庫'); return; }
@@ -3048,8 +3101,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const combo = readRowCombo(comboEditorRow) || { members: [] };
       const index = buildItemIndex();
       const box = document.getElementById('comboMemberList');
-      document.getElementById('comboTitle').textContent =
-        `${comboEditorRow.querySelector('.v-style').value || '（未命名規格）'}　${combo.comboId ? '｜USALE 複合編號 ' + combo.comboId : ''}`;
+      // 從規格表建的複合商品，名稱就取這一列的「樣式」，講明白免得存完才發現
+      const rowStyle = comboEditorRow.querySelector('.v-style').value.trim();
+      const ref = comboEditorRow.dataset.comboRef;
+      document.getElementById('comboTitle').innerHTML = ref
+        ? `已連結複合商品 <span class="font-mono">${ref}</span>（成員與售價請到「🎁 複合商品」分頁編輯）`
+        : `複合商品名稱將使用這一列的<b>樣式</b>：<span class="text-indigo-700 font-bold">${rowStyle || '（還沒填樣式）'}</span>`
+          + `${comboEditorRow.dataset.comboPending ? `　編號 <span class="font-mono">${comboEditorRow.dataset.comboPending}</span>` : ''}`;
 
       if (!combo.members.length) {
         box.innerHTML = '<div class="text-xs text-gray-400 py-2">還沒有成員，用下面的搜尋加入品項</div>';
@@ -3146,6 +3204,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       bc.dataset.manual = '1';
       const sum = tr.querySelector('.v-combo-summary');
       sum.textContent = (sum.textContent || '') + `　編號 ${data.code}（按儲存才會建立）`;
+      // 取號是非同步的，面板在那之前就畫好了，要再畫一次才看得到編號
+      if (comboEditorRow === tr) renderComboEditor();
     }
 
     // ===== 商品編號／品項條碼規則 =====
@@ -3926,6 +3986,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const members = (combo && combo.members) || [];
         const style = tr.querySelector('.v-style').value.trim();
         if (!members.length) { skipped.push(`${style || '（未命名）'}：沒有設定成員`); continue; }
+        if (!style) { skipped.push('有一列複合規格沒有填「樣式」，複合商品要用它當名稱'); continue; }
 
         // 材積看成員：只要有一個 1S 就是 1S
         const has1S = members.some(m => {
@@ -4090,6 +4151,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       setShareStatus(`已連線（${localStorage.getItem(SHARE_USER_KEY) || ''}${shareRole === 'admin' ? '・管理員' : ''}）`, 'text-green-600');
       renderSharedList();
       loadSharedItems();   // 連上就把品項索引拉下來，狀態列才看得到筆數
+      restoreShareTools();
     }
 
     function shareLogout() {
@@ -7065,6 +7127,7 @@ ${co.bank?`<div class="bank">
     function newCombo() {
       if (!shareToken) { alert('請先到「產品建立」分頁的共用商品庫連線'); return; }
       comboEditing = { id: '', name: '', style: '', size: 'F', sell: '', shopeeSell: '', members: [] };
+      comboStyleTouched = false;
       fillComboForm();
       document.getElementById('comboEditBox').classList.remove('hidden');
       document.getElementById('c_id_hint').textContent = '選好成員後會自動產生編號';
@@ -7079,6 +7142,7 @@ ${co.bank?`<div class="bank">
         sell: c.sell || '', shopeeSell: c.shopeeSell || '', members: c.members || [],
         byProduct: c.byProduct || {}, hiddenFor: c.hiddenFor || [],
       };
+      comboStyleTouched = !!(c.style && c.style !== c.name);   // 存過不一樣的就是動過
       fillComboForm();
       document.getElementById('comboEditBox').classList.remove('hidden');
       document.getElementById('c_id_hint').textContent = '';
@@ -7101,6 +7165,15 @@ ${co.bank?`<div class="bank">
     // 複合商品沒有自己的廠商標籤：成本完全由成員決定，
     // 每個成員用它自己商品的標籤換匯（comboMemberTotals 負責），這裡只負責顯示。
     function comboTotals() { return comboMemberTotals((comboEditing && comboEditing.members) || []); }
+
+    // 樣式預設就是複合名稱——多數情況兩者一樣，讓人少打一次。
+    // 使用者一旦自己動過樣式就不再覆蓋，否則會把他改的東西蓋掉。
+    let comboStyleTouched = false;
+
+    function onComboNameInput() {
+      if (!comboStyleTouched) setVal('c_style', pVal('c_name'));
+      recalcComboPricing();
+    }
 
     function recalcComboPricing() {
       if (!comboEditing) return;
@@ -7202,6 +7275,7 @@ ${co.bank?`<div class="bank">
       await ensureComboCode();
       if (!comboEditing.id) { alert('還沒有複合編號，請確認連線後再試'); return; }
       if (!pVal('c_name').trim()) { alert('請填寫名稱'); return; }
+      if (!comboEditing.style) comboEditing.style = comboEditing.name;   // 留空就用名稱
 
       const { ok, status, data } = await shareApi(`/api/combos/${encodeURIComponent(comboEditing.id)}`, {
         method: 'PUT',
@@ -7259,11 +7333,11 @@ ${co.bank?`<div class="bank">
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-bold text-gray-700 mb-1">名稱 <span class="text-red-500">*</span></label>
-            <input id="c_name" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：登山杖4入組">
+            <input id="c_name" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：登山杖4入組" oninput="onComboNameInput()">
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">樣式</label>
-            <input id="c_style" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="F">
+            <input id="c_style" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="留空則用複合名稱" oninput="comboStyleTouched=true;recalcComboPricing()">
           </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">尺寸</label>
