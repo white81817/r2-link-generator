@@ -2052,6 +2052,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <div class="flex flex-wrap items-center gap-2 mb-2">
             <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('share')">
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
+            <button onclick="cleanLegacyComboVariants()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="舊版把複合商品塞在商品的規格列裡，這支把殘留的清掉">🧹 清理舊複合規格</button>
             <button onclick="analyzeCodePatterns()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="看共用庫裡的商品編號有幾種寫法、哪些不符合 SH/CF + 0S/1S + 四位數 + 00 的規則">🔢 檢查編號規則</button>
             <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded px-3 py-1 hidden font-medium" title="商品本身有標籤，只是共用庫的清單索引沒存到，用標籤篩選時會漏掉它們。按一次會從商品讀回來補進索引，不會改到商品內容"></button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
@@ -5076,20 +5077,26 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           alert('這份檔案看起來不是 USALE 的複合商品資料（找不到「複合編號」欄位）');
           return;
         }
+        if (!shareToken) {
+          alert('請先在「產品建立」分頁的共用商品庫輸入通行碼連線後再匯入。');
+          return;
+        }
 
-        // 依複合編號歸群，重複成員累加數量
+        // 依複合編號歸群；同一成員重複出現代表數量（USALE 沒有數量欄位）
         const byId = new Map();
         rows.forEach(r => {
           const id = String(r['複合編號'] || '').trim();
           if (!id) return;
           if (!byId.has(id)) {
             byId.set(id, {
-              comboId: id,
+              id,
               name: String(r['複合名稱'] || '').trim(),
               type: String(r['複合類型'] || '').trim(),
               priceMode: String(r['售價模式'] || '').trim(),
               priceAlloc: String(r['售價分配'] || '').trim(),
-              sell: r['售價'],
+              sell: r['售價'] || '',
+              shopeeSell: '',
+              style: '', size: 'F', tags: [],
               members: new Map(),
             });
           }
@@ -5102,120 +5109,86 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           else g.members.set(key, { barcode, code, qty: 1 });
         });
 
-        if (!shareToken) {
-          alert('商品現在一律存進共用商品庫，請先在上方「共用商品庫」輸入通行碼連線後再匯入。');
-          return;
-        }
-
         const index = buildItemIndex();
-
-        // 先算出每個複合商品要掛到哪個母商品，再一次把這些母商品的完整資料抓回來，
-        // 逐筆 GET 會變成上百趟往返
-        const plan = [];
+        const combos = [];
+        const unresolved = [];
         for (const g of byId.values()) {
           const members = [...g.members.values()];
-          const parents = [...new Set(members.map(m => comboMemberParent(m.code)).filter(Boolean))];
-          let hostCode = null;
-          if (parents.length === 1) {
-            if (index.byCode.has(parents[0])) hostCode = parents[0];
-            else {
-              for (const m of members) {
-                const { hit } = resolveComboMember(m, index);
-                if (hit) { hostCode = String(hit.product.code || '').toUpperCase(); break; }
-              }
-            }
-          }
-          plan.push({ g, members, hostCode });
-        }
-
-        const hostCodes = [...new Set(plan.map(x => x.hostCode).filter(Boolean))];
-        const hosts = {};
-        for (let i = 0; i < hostCodes.length; i += 100) {
-          const { ok, data } = await shareApi('/api/products/batch-get', {
-            method: 'POST', body: JSON.stringify({ codes: hostCodes.slice(i, i + 100) }),
-          });
-          if (ok) Object.entries(data.products || {}).forEach(([c, rec]) => { hosts[c] = rec.data; });
-        }
-
-        const db = {};
-        let attached = 0, standalone = 0, updatedProducts = new Set();
-        const unresolvedCombos = [];
-
-        for (const { g, members, hostCode } of plan) {
-          // 成員對得到幾個
           const bad = members.filter(m => !resolveComboMember(m, index).hit).length;
-          if (bad) unresolvedCombos.push(`${g.comboId} ${g.name}（${bad}/${members.length} 個成員對不到）`);
-
-          const variant = {
-            style: g.name || g.comboId,
-            size: 'F',
-            kind: 'combo',
-            combo: {
-              comboId: g.comboId,
-              type: g.type,
-              priceMode: g.priceMode,
-              priceAlloc: g.priceAlloc,
-              members,
-            },
-            sell: g.sell || '',
-            wholesale: '', weight: '', stock: 0, preorder: 500,
-            deliveryDays: '10', salesMode: '可追', barcode: '', barcodeManual: true,
-          };
-
-          const host = hostCode ? (db[hostCode] || hosts[hostCode]) : null;
-          if (host) {
-            host.variants = host.variants || [];
-            const at = host.variants.findIndex(v => v.combo && v.combo.comboId === g.comboId);
-            if (at >= 0) host.variants[at] = variant; else host.variants.push(variant);
-            db[hostCode] = host;
-            updatedProducts.add(hostCode);
-            attached++;
-          } else {
-            const code = g.comboId;
-            const exist = db[code] || {};
-            db[code] = {
-              ...exist,
-              code,
-              name: g.name || code,
-              vendor: exist.vendor || '',
-              variants: [variant],
-            };
-            updatedProducts.add(code);
-            standalone++;
-          }
+          if (bad) unresolved.push(`${g.id} ${g.name}（${bad}/${members.length} 個成員對不到）`);
+          combos.push({ id: g.id, data: { ...g, members } });
         }
 
-        let uploaded = 0;
-        {
-          const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
-          const codes = [...updatedProducts];
-          for (let i = 0; i < codes.length; i += 50) {
-            const chunk = codes.slice(i, i + 50);
-            const { ok, data } = await shareApi('/api/products', {
-              method: 'PUT',
-              body: JSON.stringify({ items: chunk.map(c => ({ code: c, data: db[c] })), force: true, updatedBy }),
-            });
-            if (ok && Array.isArray(data.saved)) uploaded += data.saved.length;
-          }
-          await refreshSharedList();
+        if (!confirm(`檔案共 ${combos.length} 個複合商品。\n\n`
+                   + `會存進「複合商品」資料庫，沿用 USALE 的原編號（例如 ${combos[0] ? combos[0].id : ''}），`
+                   + `不會動到任何商品的一般規格。\n\n要匯入嗎？`)) return;
+
+        const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
+        let saved = 0;
+        for (let i = 0; i < combos.length; i += 50) {
+          const { ok, data } = await shareApi('/api/combos', {
+            method: 'PUT',
+            body: JSON.stringify({ items: combos.slice(i, i + 50), updatedBy }),
+          });
+          if (ok && Array.isArray(data.saved)) saved += data.saved.length;
         }
+        await refreshComboList();
 
         alert(`複合商品匯入完成\n`
-          + `・共 ${byId.size} 個複合商品\n`
-          + `・掛到既有商品成為複合規格：${attached} 個\n`
-          + `・成員跨多個商品，建成獨立商品：${standalone} 個\n`
-          + `・影響 ${updatedProducts.size} 個商品，已存進共用商品庫 ${uploaded} 個`
-          + (unresolvedCombos.length
-              ? `\n\n⚠ 有 ${unresolvedCombos.length} 個複合商品的成員對不到本機資料，`
-                + `批價與重量會是空的，需要人工處理：\n`
-                + unresolvedCombos.slice(0, 10).join('\n')
-                + (unresolvedCombos.length > 10 ? `\n…另有 ${unresolvedCombos.length - 10} 個` : '')
+          + `・存進複合商品資料庫：${saved} / ${combos.length} 個\n`
+          + `・商品的一般規格完全沒有更動`
+          + (unresolved.length
+              ? `\n\n⚠ 有 ${unresolved.length} 個複合商品的成員對不到共用庫的品項，`
+                + `批價與重量會算不出來：\n` + unresolved.slice(0, 10).join('\n')
+                + (unresolved.length > 10 ? `\n…另有 ${unresolved.length - 10} 個` : '')
               : ''));
       } catch (e) {
         alert('匯入失敗：' + e.message);
       } finally {
         event.target.value = '';
       }
+    }
+
+    // 舊版把複合商品塞進商品的規格列裡，現在複合商品自成一份資料庫。
+    // 這支把商品裡殘留的複合規格清掉，否則同一個組合會在畫面上出現兩次
+    // （一次是商品自己存的，一次是從複合商品資料庫衍生的）。
+    async function cleanLegacyComboVariants() {
+      if (!shareToken) { alert('請先連線共用商品庫'); return; }
+      if (!confirm('要掃描共用庫，把商品裡殘留的舊複合規格清掉嗎？\n\n'
+                 + '（複合商品資料庫不受影響，商品的一般規格也不會動）')) return;
+
+      const codes = sharedList.map(x => x.code);
+      const dirty = [];
+      for (let i = 0; i < codes.length; i += 100) {
+        const { ok, data } = await shareApi('/api/products/batch-get', {
+          method: 'POST', body: JSON.stringify({ codes: codes.slice(i, i + 100) }),
+        });
+        if (!ok) continue;
+        Object.entries(data.products || {}).forEach(([code, rec]) => {
+          const vs = (rec.data && rec.data.variants) || [];
+          const kept = vs.filter(v => v.kind !== 'combo');
+          if (kept.length !== vs.length) {
+            dirty.push({ code, data: { ...rec.data, variants: kept }, removed: vs.length - kept.length });
+          }
+        });
+      }
+
+      if (!dirty.length) { alert('沒有找到殘留的舊複合規格，不需要清理。'); return; }
+      const total = dirty.reduce((n, d) => n + d.removed, 0);
+      if (!confirm(`找到 ${dirty.length} 個商品、共 ${total} 個舊複合規格。\n\n要清掉嗎？`)) return;
+
+      const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
+      let done = 0;
+      for (let i = 0; i < dirty.length; i += 50) {
+        const chunk = dirty.slice(i, i + 50);
+        const { ok, data } = await shareApi('/api/products', {
+          method: 'PUT',
+          body: JSON.stringify({ items: chunk.map(d => ({ code: d.code, data: d.data })), force: true, updatedBy }),
+        });
+        if (ok && Array.isArray(data.saved)) done += data.saved.length;
+      }
+      await refreshSharedList();
+      alert(`已清理 ${done} 個商品，移除 ${total} 個舊複合規格。`);
     }
 
     // ===== 匯入 USALE 商品資料 =====
