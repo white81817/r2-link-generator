@@ -2059,72 +2059,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
           <div id="shareTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
 
-          <!-- 選擇要上傳的本機商品 -->
-          <div id="uploadPicker" class="hidden border rounded p-3 mb-2 bg-amber-50">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-bold text-gray-700">選擇要上傳到共用庫的本機商品</span>
-              <span class="text-xs">
-                <button onclick="toggleAllUploadPick(true)" class="text-blue-500 hover:underline">全選篩選結果</button>
-                <button onclick="toggleAllUploadPick(false)" class="text-gray-400 hover:underline ml-2">全不選</button>
-              </span>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 mb-2">
-              <input id="uploadSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('upload')">
-              <label class="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
-                <input type="checkbox" id="uploadOnlyNew" class="w-4 h-4" onchange="resetListPage('upload')">
-                只看共用庫還沒有的
-              </label>
-              <span id="uploadPickCount" class="text-xs text-gray-400"></span>
-            </div>
-            <div id="uploadTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
-            <div id="uploadPickList" class="max-h-52 overflow-y-auto bg-white border rounded p-2 mb-1"></div>
-            <div id="uploadPager" class="mb-2"></div>
-            <div id="uploadProgressBox" class="hidden mb-2">
-              <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div id="uploadProgressBar" class="bg-amber-500 h-2 transition-all" style="width:0%"></div>
-              </div>
-              <div id="uploadProgress" class="text-xs text-gray-700 mt-1 font-medium"></div>
-            </div>
-            <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-1 cursor-pointer">
-              <input type="checkbox" id="skipExistingOnUpload" class="w-4 h-4" checked onchange="refreshUploadExistsLabel()">
-              共用庫已經有的商品編號就<b>跳過</b>，不要覆蓋（取消勾選＝直接覆蓋掉共用庫的版本）
-            </label>
-            <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-2 cursor-pointer">
-              <input type="checkbox" id="removeLocalAfterUpload" class="w-4 h-4">
-              上傳成功後，把這些商品從本機儲存中移除（共用庫已有一份，不需重複保留）
-            </label>
-            <div class="flex gap-2 items-center">
-              <button id="uploadStartBtn" onclick="doUploadSelected()" class="bg-amber-100 hover:bg-amber-200 text-xs rounded px-3 py-1.5 font-medium">開始上傳</button>
-              <button id="uploadCancelBtn" onclick="closeUploadPicker()" class="text-xs text-gray-400 hover:text-gray-600 px-2">取消</button>
-            </div>
-          </div>
-
           <div id="sharedProductList" class="flex flex-wrap gap-2"></div>
           <div id="sharePager" class="mt-2"></div>
         </div>
-      </div>
-
-      <!-- 本機殘留資料（僅供遷移，全部上傳到共用庫後這一區會自動消失） -->
-      <div id="localLegacyBox" class="bg-amber-50 border border-amber-200 rounded-lg shadow-md p-4 mb-6 hidden">
-        <p class="text-xs text-amber-800 mb-2">
-          ⚠ 商品現在一律存在<b>共用商品庫</b>。下面這些是還留在這台電腦上的舊資料，
-          請用〔⬆ 上傳到共用庫〕搬過去，搬完這一區就會自動消失。
-        </p>
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-semibold text-gray-600">📋 尚未搬到共用庫的本機資料</h3>
-          <button onclick="deleteSavedProduct()" class="text-xs text-red-400 hover:text-red-600 hidden" id="deleteBtn">刪除目前商品記錄</button>
-        </div>
-        <div class="flex flex-wrap items-center gap-2 mb-2">
-          <input id="savedSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('saved')">
-          <button onclick="openUploadPicker()" class="text-xs bg-amber-200 hover:bg-amber-300 text-amber-900 rounded px-3 py-1 font-medium">⬆ 上傳到共用庫</button>
-          <button onclick="deleteSavedFiltered()" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded px-3 py-1" title="刪除目前搜尋／標籤篩選出來的所有本機記錄">🗑 刪除篩選結果</button>
-          <span id="savedCount" class="text-xs text-gray-400"></span>
-        </div>
-        <div id="savedTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
-        <div id="savedProductList" class="flex flex-wrap gap-2">
-          <span class="text-gray-400 text-xs">尚無儲存記錄</span>
-        </div>
-        <div id="savedPager" class="mt-2"></div>
       </div>
 
       <!-- 基本資料 -->
@@ -2502,7 +2439,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
   <!-- =================== 產品建立腳本 =================== -->
   <script>
     let variantRowCount = 0;
-    const PRODUCT_DB_KEY = 'productDB_v2';
 
     function pVal(id) {
       return (document.getElementById(id) || {}).value || '';
@@ -2818,7 +2754,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return sharedItems;
     }
 
-    // 成員以共用商品庫為主，本機資料補上共用庫還沒收錄的（例如剛建還沒上傳的）
+    // 成員一律以共用商品庫為準（本機已經不再存商品）
     function buildItemIndex() {
       if (itemIndexCache) return itemIndexCache;
       const byBarcode = new Map();
@@ -2828,7 +2764,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         Object.entries(sharedItems).forEach(([key, e]) => {
           const entry = {
             product: { code: e.code, name: e.name },
-            variant: { style: e.style, size: e.size, wholesale: e.wholesale, weight: e.weight, barcode: e.barcode },
+            variant: {
+              style: e.style, size: e.size, wholesale: e.wholesale, weight: e.weight,
+              barcode: e.barcode, vendorCode: e.vendorCode || '', sku1688: e.sku1688 || null,
+            },
             from: '共用庫',
           };
           const bc = String(e.barcode || '').trim().toUpperCase();
@@ -2838,17 +2777,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           byCode.get(code).variants.push(entry.variant);
         });
       }
-
-      const db = getDB();
-      Object.values(db).forEach(p => {
-        const vs = p.variants || [];
-        const code = String(p.code || '').trim().toUpperCase();
-        if (!byCode.has(code)) byCode.set(code, { product: p, variants: vs });
-        vs.forEach(v => {
-          const bc = String(v.barcode || '').trim().toUpperCase();
-          if (bc && !byBarcode.has(bc)) byBarcode.set(bc, { product: p, variant: v, from: '本機' });
-        });
-      });
 
       itemIndexCache = { byBarcode, byCode };
       return itemIndexCache;
@@ -3662,7 +3590,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         }
         return '';
       };
-      const localDB = getDB();
+      // 商品已經全部搬到共用商品庫，這裡改用共用庫的品項索引來查料號
+      const itemIndex = buildItemIndex();
       const results = [];
 
       rows.forEach((r, i) => {
@@ -3679,8 +3608,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
         if (!vendorCode) {
           if (!code) return fail('沒有廠商料號，也沒有商品編號');
-          const prod = localDB[code];
-          if (!prod) return fail(`本機商品資料裡沒有 ${code}（在「產品建立」存過的才會有）`);
+          const prod = itemIndex.byCode.get(String(code).trim().toUpperCase());
+          if (!prod) return fail(`共用商品庫裡沒有 ${code}`);
           const v = (prod.variants || []).find((x) =>
             (!style || String(x.style).trim() === style) && (!size || String(x.size).trim() === size));
           if (!v) return fail(`${code} 找不到規格「${style} / ${size}」`);
@@ -3794,12 +3723,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // ===== 儲存資料庫 =====
-    function getDB() {
-      try { return JSON.parse(localStorage.getItem(PRODUCT_DB_KEY) || '{}'); }
-      catch(e) { return {}; }
-    }
-    function setDB(db) { localStorage.setItem(PRODUCT_DB_KEY, JSON.stringify(db)); invalidateItemIndex(); }
-
     function syncDescriptionFromFields() {
       const material   = pVal('p_material').trim();
       const dimensions = pVal('p_dimensions').trim();
@@ -3986,7 +3909,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // ── 分頁 ──
     // 一頁 25 筆，剩下的用上下頁翻，而不是直接砍掉不顯示
     const LIST_PAGE_SIZE = 25;
-    const listPage = { share: 1, saved: 1, upload: 1 };
+    const listPage = { share: 1 };
 
     function gotoListPage(scope, page) {
       listPage[scope] = Math.max(1, page);
@@ -4027,8 +3950,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     // ── 標籤篩選 ──
     // 三份清單各自記住自己選了哪些標籤（多選，全部命中才顯示）
-    const tagFilterState = { share: new Set(), saved: new Set(), upload: new Set() };
-    const TAG_FILTER_RENDER = { share: 'renderSharedList', saved: 'renderSavedList', upload: 'renderUploadPickList' };
+    const tagFilterState = { share: new Set() };
+    const TAG_FILTER_RENDER = { share: 'renderSharedList' };
 
     // 商品資料裡的標籤：勾選的固定標籤 + 自由輸入的（頓號／逗號／空白分隔）
     function productTags(data) {
@@ -4165,205 +4088,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       await refreshSharedList();
     }
 
-    // ── 選擇性上傳本機商品 ──
-    // 幾百筆時清單會被篩選蓋掉，勾選狀態不能只存在 DOM，否則一搜尋就全沒了
-    let uploadPickSelected = new Set();
-
-    function openUploadPicker() {
-      const db = getDB();
-      const codes = Object.keys(db);
-      if (!codes.length) { alert('本機沒有商品資料'); return; }
-      uploadPickSelected = new Set(codes);
-      tagFilterState.upload.clear();
-      document.getElementById('uploadSearch').value = '';
-      document.getElementById('uploadOnlyNew').checked = false;
-      document.getElementById('removeLocalAfterUpload').checked = false;
-      document.getElementById('skipExistingOnUpload').checked = true;
-      renderUploadPickList();
-      document.getElementById('uploadPicker').classList.remove('hidden');
-    }
-
-    // 目前篩選條件下看得到的商品編號
-    function uploadPickVisibleCodes() {
-      const db = getDB();
-      const kw = (document.getElementById('uploadSearch').value || '').trim();
-      const onlyNew = document.getElementById('uploadOnlyNew').checked;
-      return Object.keys(db).filter(code =>
-        passTagFilter('upload', db[code]) &&
-        (!onlyNew || !sharedList.some(x => x.code === code)) &&
-        matchKeywords(`${code} ${db[code].name || ''} ${db[code].vendor || ''} ${productTags(db[code]).join(' ')}`, kw));
-    }
-
-    function renderUploadPickList() {
-      const db = getDB();
-      renderTagFilter('uploadTagFilter', 'upload', Object.keys(db).map(k => db[k]));
-      const visible = uploadPickVisibleCodes();
-      const info = paginate('upload', visible);
-
-      document.getElementById('uploadPickCount').textContent =
-        `已勾選 ${uploadPickSelected.size} 筆／本機共 ${Object.keys(db).length} 筆` +
-        (visible.length !== Object.keys(db).length ? `，符合 ${visible.length} 筆` : '');
-
-      const box = document.getElementById('uploadPickList');
-      if (!visible.length) {
-        box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>';
-        renderPager('uploadPager', 'upload', { pages: 1 }, 0);
-        return;
-      }
-      renderPager('uploadPager', 'upload', info, visible.length);
-      box.innerHTML = info.slice.map(code => {
-        const inShared = sharedList.some(x => x.code === code);
-        return `<label class="flex items-center gap-2 text-xs py-1 cursor-pointer hover:bg-gray-50">
-          <input type="checkbox" class="upload-pick w-4 h-4" value="${code}" ${uploadPickSelected.has(code) ? 'checked' : ''}
-                 onchange="onUploadPickToggle(this)">
-          <span class="font-mono">${code}</span>
-          <span class="text-gray-600">${db[code].name || ''}</span>
-          ${db[code].vendor ? `<span class="text-gray-400">${db[code].vendor}</span>` : ''}
-          ${inShared ? '<span class="upload-exists text-orange-700"></span>' : ''}
-        </label>`;
-      }).join('');
-      refreshUploadExistsLabel();
-    }
-
-    function onUploadPickToggle(cb) {
-      cb.checked ? uploadPickSelected.add(cb.value) : uploadPickSelected.delete(cb.value);
-      const el = document.getElementById('uploadPickCount');
-      const db = getDB();
-      const visible = uploadPickVisibleCodes();
-      el.textContent = `已勾選 ${uploadPickSelected.size} 筆／本機共 ${Object.keys(db).length} 筆` +
-        (visible.length !== Object.keys(db).length ? `，符合 ${visible.length} 筆` : '');
-    }
-
-    // 「已存在」的標記文字要跟著模式走，不然使用者會以為還是會覆蓋
-    function refreshUploadExistsLabel() {
-      const skip = document.getElementById('skipExistingOnUpload').checked;
-      document.querySelectorAll('.upload-exists').forEach(el => {
-        el.textContent = skip ? '（共用庫已有，會跳過）' : '（共用庫已有，會被覆蓋）';
-        el.className = 'upload-exists ' + (skip ? 'text-gray-400' : 'text-orange-700');
-      });
-    }
-
-    function closeUploadPicker() {
-      document.getElementById('uploadPicker').classList.add('hidden');
-      document.getElementById('uploadProgressBox').classList.add('hidden');
-    }
-
-    // 「全選」作用在整個篩選結果（跨頁），不是只有當頁，不然搜尋等於白做
-    function toggleAllUploadPick(on) {
-      if (on) uploadPickVisibleCodes().forEach(c => uploadPickSelected.add(c));
-      else uploadPickSelected.clear();
-      renderUploadPickList();
-    }
-
-    async function doUploadSelected() {
-      // 讀 Set 而不是 DOM：被篩選蓋掉的勾選也要算進去
-      const db0 = getDB();
-      const picked = [...uploadPickSelected].filter(c => db0[c]);
-      if (!picked.length) { alert('請至少勾選一個商品'); return; }
-      const removeLocal = document.getElementById('removeLocalAfterUpload').checked;
-      const skipExisting = document.getElementById('skipExistingOnUpload').checked;
-      const willOverwrite = picked.filter(code => sharedList.some(x => x.code === code));
-      if (!confirm(`要上傳 ${picked.length} 個商品到共用庫嗎？`
-                 + (willOverwrite.length
-                     ? (skipExisting
-                         ? `\n其中 ${willOverwrite.length} 個共用庫已經有了，會跳過不覆蓋。`
-                         : `\n⚠ 其中 ${willOverwrite.length} 個共用庫已經有了，會被你的版本覆蓋掉。`)
-                     : '')
-                 + (removeLocal ? '\n上傳成功的商品會從本機移除。' : ''))) return;
-
-      const db = getDB();
-      const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
-      const done = [], failed = [], skipped = [];
-      const progressBox = document.getElementById('uploadProgressBox');
-      const progress = document.getElementById('uploadProgress');
-      const bar = document.getElementById('uploadProgressBar');
-      const startBtn = document.getElementById('uploadStartBtn');
-      const cancelBtn = document.getElementById('uploadCancelBtn');
-      const errors = [];
-
-      // 沒有回饋時使用者只會看到畫面不動，分不出是在跑還是壞了。
-      // 進度條 + 按鈕本身變成狀態顯示，同時擋掉重複點擊。
-      const setProgress = (t, ratio) => {
-        if (progress) progress.textContent = t;
-        if (bar && ratio !== undefined) bar.style.width = Math.round(ratio * 100) + '%';
-      };
-      progressBox.classList.remove('hidden');
-      startBtn.disabled = true;
-      startBtn.className = 'bg-gray-200 text-gray-500 text-xs rounded px-3 py-1.5 font-medium cursor-not-allowed';
-      startBtn.textContent = '上傳中…';
-      cancelBtn.classList.add('hidden');
-      setProgress(`準備上傳 ${picked.length} 筆…`, 0);
-      // 讓瀏覽器先把上面的狀態畫出來，再開始送請求
-      await new Promise(r => setTimeout(r, 50));
-
-      // 一筆一趟太慢：162 個商品就是 162 次往返，而且 worker 每筆都會重寫
-      // product:list，KV 對同一個 key 有寫入頻率限制，寫愈快被節流得愈兇。
-      // 改成分批送，一批只寫一次清單。
-      const BATCH = 50;
-      let bulkSupported = true;
-      for (let i = 0; i < picked.length && bulkSupported; i += BATCH) {
-        const chunk = picked.slice(i, i + BATCH);
-        setProgress(`上傳中… ${i} / ${picked.length}（第 ${Math.floor(i / BATCH) + 1} 批，共 ${Math.ceil(picked.length / BATCH)} 批）`, i / picked.length);
-        const { ok, status, data } = await shareApi('/api/products', {
-          method: 'PUT',
-          body: JSON.stringify({ items: chunk.map(code => ({ code, data: db[code] })), force: true, skipExisting, updatedBy }),
-        });
-        if (ok && data && Array.isArray(data.saved)) {
-          const skippedNow = Array.isArray(data.skipped) ? data.skipped : [];
-          done.push(...data.saved);
-          skipped.push(...skippedNow);
-          failed.push(...chunk.filter(c => !data.saved.includes(c) && !skippedNow.includes(c)));
-        } else if (status === 404 || status === 405) {
-          // worker 還沒部署到有批次端點的版本，退回逐筆上傳而不是整批失敗
-          bulkSupported = false;
-          setProgress('共用庫還是舊版，改用逐筆上傳（會比較慢）…', 0);
-        } else {
-          failed.push(...chunk);
-          if (data && data.error) errors.push(`HTTP ${status}：${data.error}`);
-          else errors.push(`HTTP ${status}`);
-        }
-        setProgress(`上傳中… ${Math.min(i + chunk.length, picked.length)} / ${picked.length}`, Math.min(i + chunk.length, picked.length) / picked.length);
-      }
-
-      if (!bulkSupported) {
-        done.length = 0; failed.length = 0; skipped.length = 0;
-        for (let i = 0; i < picked.length; i++) {
-          const code = picked[i];
-          setProgress(`上傳中（逐筆模式）… ${i + 1} / ${picked.length}`, (i + 1) / picked.length);
-          // 舊版 worker 沒有 skipExisting，改用共用庫清單在前端擋掉
-          if (skipExisting && sharedList.some(x => x.code === code)) { skipped.push(code); continue; }
-          const { ok, status, data } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
-            method: 'PUT',
-            body: JSON.stringify({ data: db[code], force: true, updatedBy }),
-          });
-          if (ok) done.push(code);
-          else { failed.push(code); if (errors.length < 3) errors.push(`${code}：${(data && data.error) || 'HTTP ' + status}`); }
-        }
-      }
-      setProgress(`完成：成功 ${done.length}／跳過 ${skipped.length}／失敗 ${failed.length}`, 1);
-      startBtn.disabled = false;
-      startBtn.className = 'bg-amber-100 hover:bg-amber-200 text-xs rounded px-3 py-1.5 font-medium';
-      startBtn.textContent = '開始上傳';
-      cancelBtn.classList.remove('hidden');
-
-      // 只移除確定上傳成功的，失敗的留在本機以免資料遺失
-      if (removeLocal && done.length) {
-        const db2 = getDB();
-        done.forEach(code => { delete db2[code]; });
-        setDB(db2);
-        renderSavedList();
-      }
-
-      closeUploadPicker();
-      await refreshSharedList();
-      alert(`上傳完成：成功 ${done.length} 個`
-        + (skipped.length ? `，跳過 ${skipped.length} 個（共用庫已有）` : '')
-        + (failed.length ? `，失敗 ${failed.length} 個（${failed.slice(0, 20).join('、')}${failed.length > 20 ? '…' : ''}）` : '')
-        + (errors.length ? `\n\n失敗原因：\n${[...new Set(errors)].slice(0, 3).join('\n')}` : '')
-        + (removeLocal && done.length ? `\n已從本機移除 ${done.length} 個（跳過與失敗的都保留在本機）` : '')
-        + (skipped.length ? `\n\n跳過的：${skipped.join('、')}` : ''));
-    }
-
     async function loadSharedProduct(code) {
       const { ok, data } = await shareApi(`/api/products/${encodeURIComponent(code)}`);
       if (!ok) { alert('讀取失敗：' + (data.error || '')); return; }
@@ -4408,61 +4132,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return true;
     }
 
-    function renderSavedList() {
-      const db = getDB();
-      const container = document.getElementById('savedProductList');
-      const keys = Object.keys(db);
-      const deleteBtn = document.getElementById('deleteBtn');
-      const currentCode = pVal('p_code');
-      const countEl = document.getElementById('savedCount');
-      const box = document.getElementById('localLegacyBox');
-
-      // 本機資料清空後整個區塊收起來——這是遷移用的暫時介面，不是常駐功能
-      box.classList.toggle('hidden', keys.length === 0);
-      if (keys.length === 0) {
-        container.innerHTML = '';
-        if (countEl) countEl.textContent = '';
-        deleteBtn.classList.add('hidden');
-        return;
-      }
-
-      deleteBtn.classList.toggle('hidden', !currentCode || !db[currentCode]);
-
-      const kw = (document.getElementById('savedSearch').value || '').trim();
-      renderTagFilter('savedTagFilter', 'saved', keys.map(k => db[k]));
-      const shown = keys.filter(k =>
-        passTagFilter('saved', db[k]) &&
-        matchKeywords(`${k} ${db[k].name || ''} ${db[k].vendor || ''} ${productTags(db[k]).join(' ')}`, kw));
-      const info = paginate('saved', shown);
-
-      if (countEl) {
-        countEl.textContent = `共 ${keys.length} 筆` +
-          ((kw || tagFilterState.saved.size) ? `，符合 ${shown.length} 筆` : '');
-      }
-      if (!shown.length) {
-        container.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>';
-        renderPager('savedPager', 'saved', { pages: 1 }, 0);
-        return;
-      }
-      renderPager('savedPager', 'saved', info, shown.length);
-
-      container.innerHTML = info.slice.map(k => {
-        const item = db[k];
-        const isActive = k === currentCode;
-        return `<span class="inline-flex items-stretch text-xs rounded-full border overflow-hidden transition-colors ${isActive
-            ? 'bg-blue-500 text-white border-blue-500'
-            : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}">
-          <button data-load-key="${k}" class="flex items-center gap-1 px-3 py-1.5">
-            <span class="font-mono">${item.code}</span>
-            <span class="text-opacity-75">${item.name || ''}</span>
-          </button>
-          <button onclick="deleteSavedProduct('${k}')"
-            class="px-1.5 border-l ${isActive ? 'border-white/40 hover:bg-white/20' : 'border-gray-300 hover:bg-red-50 hover:text-red-600'}"
-            title="從本機刪除這筆記錄">×</button>
-        </span>`;
-      }).join('');
-    }
-
     // 複合規格列是引用，移除只是從畫面收起來，複合商品本身不受影響
     function removeVariantRow(tr) {
       if (tr.dataset.comboRef) {
@@ -4471,53 +4140,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       tr.remove();
       reindexRows();
       recalcAllVariants();
-    }
-
-    // 不帶參數＝刪除目前正在編輯的（頂上那顆按鈕）；帶編號＝刪除清單上點到的那筆
-    function deleteSavedProduct(code) {
-      const target = code || pVal('p_code');
-      if (!target) return;
-      const db = getDB();
-      if (!db[target]) return;
-      const inShared = sharedList.some(x => x.code === target);
-      if (!confirm(`確定刪除商品「${target} ${db[target].name || ''}」的本機儲存記錄？`
-                 + (inShared ? '\n\n（共用庫也有這一筆，共用庫的不會被刪掉）' : '\n\n⚠ 共用庫沒有這一筆，刪掉就沒有備份了。'))) return;
-      delete db[target];
-      setDB(db);
-      renderSavedList();
-    }
-
-    // 批次刪除目前篩選出來的，通常用在「已經上傳到共用庫，本機可以清掉」
-    function deleteSavedFiltered() {
-      const db = getDB();
-      const kw = (document.getElementById('savedSearch').value || '').trim();
-      const shown = Object.keys(db).filter(k =>
-        passTagFilter('saved', db[k]) &&
-        matchKeywords(`${k} ${db[k].name || ''} ${db[k].vendor || ''} ${productTags(db[k]).join(' ')}`, kw));
-      if (!shown.length) { alert('目前沒有符合的商品'); return; }
-
-      const notInShared = shown.filter(k => !sharedList.some(x => x.code === k));
-      if (!confirm(`要從本機刪除目前篩選出的 ${shown.length} 筆嗎？`
-                 + (notInShared.length
-                     ? `\n\n⚠ 其中 ${notInShared.length} 筆共用庫沒有，刪掉就沒有備份了：\n${notInShared.slice(0, 15).join('、')}${notInShared.length > 15 ? '…' : ''}`
-                     : '\n\n這些共用庫都有，共用庫的不會被刪掉。')
-                 + '\n\n此操作無法復原。')) return;
-      // 筆數多時再確認一次，避免手滑把整份本機資料清掉
-      if (shown.length > 20 && !confirm(`再確認一次：真的要刪掉 ${shown.length} 筆本機記錄嗎？`)) return;
-
-      shown.forEach(k => { delete db[k]; });
-      setDB(db);
-      renderSavedList();
-      alert(`已從本機刪除 ${shown.length} 筆`);
-    }
-
-    function loadProduct(code) {
-      const db = getDB();
-      const data = db[code];
-      if (!data) return;
-      if (!confirm(`載入商品「${data.code} ${data.name || ''}」？\n（儲存於 ${data.savedAt || '時間不明'}）`)) return;
-      applyProductData(data);
-      loadedBaseUpdatedAt = null;   // 由本機載入，非共用庫版本
     }
 
     // 將一份商品資料套用到表單（本機載入與共用庫載入共用）
@@ -4564,15 +4186,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const tr = addVariantRow(v, { noauto: true });
         if (v.barcodeManual) tr.querySelector('.v-barcode').dataset.manual = '1';
       });
-
-      renderSavedList();
     }
-
-    // 點擊已儲存商品（事件代理）
-    document.addEventListener('click', function(e) {
-      const btn = e.target.closest('[data-load-key]');
-      if (btn) loadProduct(btn.dataset.loadKey);
-    });
 
     // ===== 初始化 =====
     document.addEventListener('DOMContentLoaded', function() {
@@ -4598,11 +4212,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         document.querySelectorAll('#variantRows tr').forEach(r => {
           autoBarcode(r);   // 已載入的列帶 noauto，函式內會自己跳過
         });
-        renderSavedList(); // 更新active狀態
+        renderSharedList(); // 更新共用庫清單上的 active 狀態
       });
 
       addVariantRow();
-      renderSavedList();
 
       // 記住過通行碼就自動重新連線共用庫
       const savedUser = localStorage.getItem(SHARE_USER_KEY) || '';
@@ -5784,7 +5397,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.getElementById('variantRows').innerHTML = '';
       variantRowCount = 0;
       addVariantRow();
-      renderSavedList();
     }
   </script>
 

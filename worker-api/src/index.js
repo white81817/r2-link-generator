@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-28-combos-v1',
+  version: '2026-08-28-combos-v2',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -639,6 +639,9 @@ function productItemEntries(code, data) {
     size: String(v.size || ''),
     wholesale: v.wholesale === '' || v.wholesale == null ? null : Number(v.wholesale),
     weight: v.weight === '' || v.weight == null ? null : Number(v.weight),
+    // 1688 採購與複合商品都靠這份索引，料號與已比對的 SKU 也要帶著
+    vendorCode: String(v.vendorCode || ''),
+    sku1688: v.sku1688 || null,
     idx: i + 1,
   }));
 }
