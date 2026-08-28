@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-28-shared-only-v1',
+  version: '2026-08-28-combos-v1',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -883,6 +883,134 @@ app.post('/api/products/rebuild-list', async (c) => {
   await c.env.CACHE.put('product:items', JSON.stringify(items));
 
   return c.json({ ok: true, count: rebuilt.length, items: Object.keys(items).length, missing });
+});
+
+// ===== 複合商品（組合品）=====
+// 複合商品自己是一份資料庫：combo:<id> 存完整內容、combo:list 存摘要。
+// 產品建立分頁上的複合規格只是「引用」，在那裡移除不會動到這裡的資料。
+// 編號規則：BD + 材積(0S/1S) + 六位流水號；材積只要成員裡有一個 1S 就是 1S。
+const COMBO_CODE_RE = /^BD([01]S)(\d{6})$/;
+
+function comboSummary(id, c) {
+  return {
+    id,
+    name: String((c && c.name) || ''),
+    sell: (c && c.sell) || '',
+    memberCount: ((c && c.members) || []).length,
+    qtyTotal: ((c && c.members) || []).reduce((n, m) => n + (Number(m.qty) || 1), 0),
+    updatedAt: (c && c.updatedAt) || '',
+    updatedBy: (c && c.updatedBy) || '',
+  };
+}
+
+app.get('/api/combos', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  const raw = await c.env.CACHE.get('combo:list');
+  return c.json({ ok: true, list: raw ? JSON.parse(raw) : [] });
+});
+
+app.get('/api/combos/:id', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  const raw = await c.env.CACHE.get(`combo:${c.req.param('id')}`);
+  if (!raw) return c.json({ error: '找不到' }, 404);
+  return c.json({ ok: true, combo: JSON.parse(raw) });
+});
+
+// POST /api/combos/next-code — body: { size: "0S" | "1S" }
+app.post('/api/combos/next-code', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const size = String((body && body.size) || '').toUpperCase();
+  if (!['0S', '1S'].includes(size)) return c.json({ error: '材積只能是 0S 或 1S' }, 400);
+
+  const raw = await c.env.CACHE.get('comboseq:all');
+  const seq = raw ? JSON.parse(raw) : {};
+  const prefix = 'BD' + size;
+
+  // 已存在的編號也算進去，避免匯入資料後基準落後而重複發號
+  const listRaw = await c.env.CACHE.get('combo:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  let maxInList = 0;
+  for (const it of list) {
+    const m = COMBO_CODE_RE.exec(String(it.id || '').toUpperCase());
+    if (m && 'BD' + m[1] === prefix) maxInList = Math.max(maxInList, parseInt(m[2], 10));
+  }
+
+  let n = Math.max(seq[prefix] || 0, maxInList) + 1;
+  if (n > 999999) return c.json({ error: `${prefix} 的六位流水號已用完` }, 409);
+  seq[prefix] = n;
+  await c.env.CACHE.put('comboseq:all', JSON.stringify(seq));
+  return c.json({ ok: true, code: prefix + String(n).padStart(6, '0'), next: n });
+});
+
+app.put('/api/combos/:id', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  const id = c.req.param('id');
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  if (!body || typeof body.data !== 'object' || body.data === null) return c.json({ error: '缺少 data' }, 400);
+
+  const now = new Date().toISOString();
+  const record = { ...body.data, id, updatedAt: now, updatedBy: String(body.updatedBy || '').trim().slice(0, 40) };
+  await c.env.CACHE.put(`combo:${id}`, JSON.stringify(record));
+
+  const listRaw = await c.env.CACHE.get('combo:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  const sm = comboSummary(id, record);
+  const at = list.findIndex(x => x.id === id);
+  if (at >= 0) list[at] = sm; else list.unshift(sm);
+  await c.env.CACHE.put('combo:list', JSON.stringify(list));
+  return c.json({ ok: true, updatedAt: now });
+});
+
+// PUT /api/combos — 批次（匯入用），combo:list 整批只寫一次
+app.put('/api/combos', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const items = Array.isArray(body && body.items) ? body.items : null;
+  if (!items || !items.length) return c.json({ error: '缺少 items' }, 400);
+  if (items.length > 100) return c.json({ error: `一次最多 100 筆，收到 ${items.length}` }, 400);
+
+  const now = new Date().toISOString();
+  const updatedBy = String(body.updatedBy || '').trim().slice(0, 40);
+  const saved = [];
+  const summaries = [];
+  const CHUNK = 20;
+  for (let i = 0; i < items.length; i += CHUNK) {
+    await Promise.all(items.slice(i, i + CHUNK).map(async (it) => {
+      const id = String((it && it.id) || '').trim();
+      if (!id || !it.data) return;
+      const record = { ...it.data, id, updatedAt: now, updatedBy };
+      await c.env.CACHE.put(`combo:${id}`, JSON.stringify(record));
+      saved.push(id);
+      summaries.push(comboSummary(id, record));
+    }));
+  }
+
+  if (summaries.length) {
+    const listRaw = await c.env.CACHE.get('combo:list');
+    const list = listRaw ? JSON.parse(listRaw) : [];
+    summaries.forEach((sm) => {
+      const at = list.findIndex(x => x.id === sm.id);
+      if (at >= 0) list[at] = sm; else list.unshift(sm);
+    });
+    await c.env.CACHE.put('combo:list', JSON.stringify(list));
+  }
+  return c.json({ ok: true, saved, updatedAt: now });
+});
+
+app.delete('/api/combos/:id', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  const id = c.req.param('id');
+  await c.env.CACHE.delete(`combo:${id}`);
+  const listRaw = await c.env.CACHE.get('combo:list');
+  if (listRaw) {
+    const list = JSON.parse(listRaw).filter(x => x.id !== id);
+    await c.env.CACHE.put('combo:list', JSON.stringify(list));
+  }
+  return c.json({ ok: true });
 });
 
 // ===== 商品編號流水號 =====

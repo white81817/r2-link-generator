@@ -259,6 +259,7 @@
     <button class="tab-btn active" onclick="switchTab('link')">🔗 連結產生器</button>
     <button class="tab-btn" onclick="switchTab('label')">🏷️ 標籤產生器</button>
     <button class="tab-btn" onclick="switchTab('product')">📦 產品建立</button>
+    <button class="tab-btn" onclick="switchTab('combo')">🎁 複合商品</button>
     <button class="tab-btn" onclick="switchTab('stock')">🔄 刷庫存</button>
     <button class="tab-btn" onclick="switchTab('order')">📋 訂單編號整理</button>
     <button class="tab-btn" onclick="switchTab('quote')">📝 報價單</button>
@@ -516,7 +517,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
   <!-- =================== 分頁切換腳本 =================== -->
   <script>
-    const TAB_IDS = ['link', 'label', 'product', 'stock', 'order', 'quote', 'perf', 'po1688'];
+    const TAB_IDS = ['link', 'label', 'product', 'combo', 'stock', 'order', 'quote', 'perf', 'po1688'];
     function switchTab(tab) {
       TAB_IDS.forEach(id => {
         document.getElementById('tab-' + id).style.display = (id === tab) ? 'block' : 'none';
@@ -527,6 +528,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const url = new URL(location.href);
       url.searchParams.set('tab', tab);
       history.replaceState(null, '', url);
+      if (tab === 'combo' && typeof initComboTab === 'function') initComboTab();
       if (tab === 'quote' && typeof initQuoteTab === 'function') initQuoteTab();
       if (tab === 'perf'  && typeof initPerfTab  === 'function') initPerfTab();
     }
@@ -2459,6 +2461,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
       <!-- 匯出按鈕 -->
       <div class="flex flex-wrap gap-3 pb-8">
+        <button onclick="newProduct()" class="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 font-medium">
+          ＋ 新增商品
+        </button>
         <button onclick="manualSave()" class="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 font-medium">
           💾 儲存
         </button>
@@ -2536,12 +2541,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // 將毛利率算出並以燈號＋百分比呈現（只有合格🟢與危險🔴兩級）
+    // el 可能是 <input>（規格表）也可能是 <div>（複合商品分頁），兩種都要能寫
     function renderMarginCell(el, sell, cost, flags, passThreshold, adRate) {
       if (!el) return;
-      if (!sell || !cost) { el.value = ''; el.title = ''; return; }
+      const put = (txt) => { if ('value' in el && el.tagName === 'INPUT') el.value = txt; else el.textContent = txt || '—'; };
+      if (!sell || !cost) { put(''); el.title = ''; return; }
       const margin = calcMargin(sell, cost, flags, adRate);
       const pass = margin >= passThreshold;
-      el.value = (pass ? '🟢' : '🔴') + ' ' + (margin * 100).toFixed(1) + '%';
+      put((pass ? '🟢' : '🔴') + ' ' + (margin * 100).toFixed(1) + '%');
       el.title = pass ? '合格' : '危險';
     }
 
@@ -2904,6 +2911,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       calcVariant(tr);
     }
 
+    // 這些欄位只有 USALE 會用到，而 USALE 匯出不含複合規格，所以複合列一律停用
+    const COMBO_DISABLED_FIELDS = ['.v-vendor-code', '.v-sku1688', '.v-safety', '.v-valid-days', '.v-delivery', '.v-sales-mode'];
+
     // 複合列的批價與重量是算出來的，鎖住避免手改後跟成員對不上
     function onVariantKindChange(tr) {
       const isCombo = tr.querySelector('.v-kind').value === 'combo';
@@ -2914,6 +2924,13 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         el.classList.toggle('text-gray-500', isCombo);
         el.classList.toggle('bg-gray-100', isCombo);
       });
+      COMBO_DISABLED_FIELDS.forEach(sel => {
+        const el = tr.querySelector(sel);
+        if (!el) return;
+        el.disabled = isCombo;
+        el.style.opacity = isCombo ? '0.35' : '';
+        if (isCombo) el.title = '複合規格不需要這個欄位（USALE 匯出不含複合規格）';
+      });
       if (isCombo) recalcComboRow(tr);
       else {
         tr.querySelector('.v-combo-summary').textContent = '';
@@ -2921,7 +2938,66 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
     }
 
-    // ── 成員編輯視窗 ──
+    // 新增商品：清空表單並回到最上面，讓人直接開始建下一個
+    function newProduct() {
+      if (!confirm('要清空表單開始建立新商品嗎？\n（未儲存的內容會消失）')) return;
+      doClearProductForm();
+      clearDraft();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.getElementById('p_code').focus();
+    }
+
+    // ── 複合規格是「引用」，資料在複合商品分頁 ──
+    // 載入商品時，把「成員包含本商品任一品項」的複合商品長成規格列。
+    // 這些列是衍生出來的，按 × 只是從畫面上收起來，不會刪掉複合商品本身。
+    async function appendComboRowsFor(product) {
+      if (!shareToken) return;
+      const barcodes = new Set((product.variants || [])
+        .map(v => String(v.barcode || '').trim().toUpperCase()).filter(Boolean));
+      const code = String(product.code || '').trim().toUpperCase();
+      if (!comboList.length) {
+        const { ok, data } = await shareApi('/api/combos');
+        if (ok) comboList = data.list || [];
+      }
+      if (!comboList.length) return;
+
+      // 摘要沒有成員明細，要逐一取回完整資料才知道成員是誰
+      const ids = comboList.map(x => x.id);
+      const related = [];
+      for (let i = 0; i < ids.length; i += 20) {
+        const part = await Promise.all(ids.slice(i, i + 20).map(async (id) => {
+          const { ok, data } = await shareApi(`/api/combos/${encodeURIComponent(id)}`);
+          return ok ? data.combo : null;
+        }));
+        part.filter(Boolean).forEach(c => {
+          const hit = (c.members || []).some(m =>
+            barcodes.has(String(m.barcode || '').trim().toUpperCase()) ||
+            String(m.code || '').trim().toUpperCase() === code);
+          if (hit) related.push(c);
+        });
+      }
+
+      related.forEach(c => {
+        const tr = addVariantRow({
+          style: c.style || c.name || c.id,   // 樣式留空就用複合商品名稱
+          size: c.size || 'F',
+          kind: 'combo',
+          combo: { comboId: c.id, members: c.members || [] },
+          sell: c.sell || '',
+          shopeeSell: c.shopeeSell || '',
+          barcode: c.id,
+          barcodeManual: true,
+        }, { noauto: true });
+        tr.dataset.comboRef = c.id;
+        const btn = tr.querySelector('.v-combo-btn');
+        btn.textContent = '編輯';
+        btn.onclick = () => { switchTab('combo'); initComboTab(); editCombo(c.id); };
+        recalcComboRow(tr);
+      });
+      if (related.length) recalcAllVariants();
+    }
+
+    // ── 成員檢視視窗（產品建立分頁上的複合規格用，唯讀）──
     let comboEditorRow = null;
 
     function openComboEditor(tr) {
@@ -3256,7 +3332,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <option value="下架" ${d.salesMode==='下架'?'selected':''}>下架</option>
           </select>
         </td>
-        <td class="border px-1 py-1 text-center"><button onclick="this.closest('tr').remove();reindexRows()" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
+        <td class="border px-1 py-1 text-center"><button onclick="removeVariantRow(this.closest('tr'))" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
       `;
       tbody.appendChild(tr);
       // 載入／匯入進來的列要在 autoBarcode 之前就鎖住，否則條碼會先被覆蓋掉才鎖
@@ -4296,14 +4372,18 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       applyProductData(data.data);
       loadedBaseUpdatedAt = data.updatedAt || '';
       renderSharedList();
+      await appendComboRowsFor(data.data || {});
     }
 
     // 儲存到共用庫；偵測到別人已改過會先問過再決定是否覆蓋
     async function saveToShared(force) {
       const code = pVal('p_code').trim();
       if (!code || !shareToken) return false;
+      // 複合規格的資料在複合商品分頁，這裡只是引用，不要跟著商品存一份
+      const form = collectFormData();
+      form.variants = (form.variants || []).filter(v => v.kind !== 'combo');
       const payload = {
-        data: collectFormData(),
+        data: form,
         baseUpdatedAt: loadedBaseUpdatedAt || '',
         updatedBy: localStorage.getItem(SHARE_USER_KEY) || '',
         force: !!force,
@@ -4381,6 +4461,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             title="從本機刪除這筆記錄">×</button>
         </span>`;
       }).join('');
+    }
+
+    // 複合規格列是引用，移除只是從畫面收起來，複合商品本身不受影響
+    function removeVariantRow(tr) {
+      if (tr.dataset.comboRef) {
+        if (!confirm('這是複合商品的引用，移除只會從這個商品的畫面上收起來，\n複合商品本身不會被刪除（要刪請到「🎁 複合商品」分頁）。\n\n要移除嗎？')) return;
+      }
+      tr.remove();
+      reindexRows();
+      recalcAllVariants();
     }
 
     // 不帶參數＝刪除目前正在編輯的（頂上那顆按鈕）；帶編號＝刪除清單上點到的那筆
@@ -4583,14 +4673,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // ===== 匯出 =====
-    // USALE 是品項條碼真正被建立的地方，所以條碼空白時這裡「產生」一個是合理的；
-    // 但只有在商品編號合規時才產得出有意義的值。不合規的編號（例如 ABC123）
-    // 用舊寫法會湊出 ABC101 這種假條碼寫進 ERP，寧可退回商品編號。
-    function usaleBarcodeFallback(code, i) {
-      const parsed = parseProductCode(code);
-      return parsed ? parsed.prefix + parsed.serial + String(i + 1).padStart(2, '0') : code;
-    }
-
     function exportInventoryXLS() {
       const code = pVal('p_code'), name = pVal('p_name');
       if (!code || !name) { alert('請填寫商品編號和商品名稱！'); return; }
@@ -4617,7 +4699,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         v.stock||'0', v.sell||'', '', '', v.weight||'',
         pVal('p_vendor'), v.vendorCode, v.wholesale||'',
         '',
-        v.barcode || usaleBarcodeFallback(code, i),
+        v.barcode || '',   // 值是什麼就是什麼，不自動推算
         v.salesMode||'可追', v.safety||'', '',
         note, '',
         v.len||'', v.wid||'', v.hei||'',
@@ -5679,6 +5761,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     function clearProductForm() {
       if (!confirm('確定要清除所有填寫的資料嗎？')) return;
+      doClearProductForm();
+    }
+
+    // 拆出來讓「新增商品」可以不重複問一次確認
+    function doClearProductForm() {
       ['p_code','p_name','p_vendor','p_highlight','p_tags_custom',
        'p_material','p_dimensions','p_prod_weight','p_description','p_image_path',
        'p_shopee_cat_id','p_shopee_cat_search'].forEach(id => {
@@ -7037,6 +7124,328 @@ ${co.bank?`<div class="bank">
   <!-- 資料存於 didibox-api 的 KV（key: perf:data），由自動化腳本 POST 進去。
        通行碼分兩種：主管密碼看全部；各 PM 密碼只看得到自己（後端就過濾好了）。 -->
   <!-- ========== 1688 採購 ========== -->
+
+  <!-- =================== 複合商品腳本 =================== -->
+  <script>
+    // 複合商品是自己一份資料庫（worker 的 combo:*），不是商品的附屬品。
+    // 產品建立分頁上的複合規格只是引用，在那裡移除不會動到這裡。
+    let comboList = [];
+    let comboEditing = null;      // { id, name, style, size, sell, shopeeSell, tags, members }
+    let comboListPage = 1;
+
+    const COMBO_TAGS = ['大陸廠商', '台灣廠商', '韓國廠商', '廠商出貨包運費', '直接綁多入銷售', '集運出客人'];
+
+    function initComboTab() {
+      if (!document.getElementById('c_tags').children.length) {
+        document.getElementById('c_tags').innerHTML = COMBO_TAGS.map(t =>
+          `<label class="flex items-center gap-1 text-xs"><input type="checkbox" class="c-tag" value="${t}" onchange="recalcComboPricing()">${t}</label>`).join('');
+      }
+      if (!comboList.length) refreshComboList();
+    }
+
+    async function refreshComboList() {
+      if (!shareToken) {
+        document.getElementById('comboListBox').innerHTML =
+          '<span class="text-xs text-gray-400">請先到「產品建立」分頁的共用商品庫輸入通行碼連線</span>';
+        return;
+      }
+      const { ok, data } = await shareApi('/api/combos');
+      if (!ok) { document.getElementById('comboListBox').innerHTML = '<span class="text-xs text-red-500">讀取失敗</span>'; return; }
+      comboList = data.list || [];
+      await loadSharedItems();
+      renderComboList();
+    }
+
+    function resetComboPage() { comboListPage = 1; renderComboList(); }
+
+    function renderComboList() {
+      const box = document.getElementById('comboListBox');
+      const kw = (document.getElementById('comboListSearch').value || '').trim();
+      const shown = comboList.filter(it => matchKeywords(`${it.id} ${it.name || ''}`, kw));
+      const pages = Math.max(1, Math.ceil(shown.length / LIST_PAGE_SIZE));
+      if (comboListPage > pages) comboListPage = pages;
+      const start = (comboListPage - 1) * LIST_PAGE_SIZE;
+      const slice = shown.slice(start, start + LIST_PAGE_SIZE);
+
+      document.getElementById('comboListCount').textContent =
+        `共 ${comboList.length} 個${kw ? `，符合 ${shown.length} 個` : ''}`;
+
+      box.innerHTML = shown.length
+        ? slice.map(it => `<span class="inline-flex items-stretch text-xs rounded-full border overflow-hidden bg-white border-gray-300 hover:border-indigo-400">
+            <button onclick="editCombo('${it.id}')" class="flex items-center gap-1 px-3 py-1.5">
+              <span class="font-mono">${it.id}</span>
+              <span>${it.name || ''}</span>
+              <span class="text-gray-400">${it.memberCount || 0}種/${it.qtyTotal || 0}件</span>
+              ${it.sell ? `<span class="text-gray-500">$${it.sell}</span>` : ''}
+            </button></span>`).join('')
+        : '<span class="text-xs text-gray-400">沒有複合商品</span>';
+
+      const pager = document.getElementById('comboListPager');
+      if (pages <= 1) { pager.innerHTML = ''; return; }
+      const btn = (label, page, dis) => dis
+        ? `<span class="text-xs px-2 py-1 text-gray-300">${label}</span>`
+        : `<button onclick="comboListPage=${page};renderComboList()" class="text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:border-blue-400">${label}</button>`;
+      pager.innerHTML = `<div class="flex items-center gap-1 flex-wrap">
+        ${btn('« 第一頁', 1, comboListPage === 1)}${btn('‹ 上一頁', comboListPage - 1, comboListPage === 1)}
+        <span class="text-xs text-gray-500 px-1">第 ${comboListPage} / ${pages} 頁　顯示 ${start + 1}–${start + slice.length}，共 ${shown.length} 個</span>
+        ${btn('下一頁 ›', comboListPage + 1, comboListPage === pages)}${btn('最後一頁 »', pages, comboListPage === pages)}
+      </div>`;
+    }
+
+    function newCombo() {
+      if (!shareToken) { alert('請先到「產品建立」分頁的共用商品庫連線'); return; }
+      comboEditing = { id: '', name: '', style: '', size: 'F', sell: '', shopeeSell: '', tags: [], members: [] };
+      fillComboForm();
+      document.getElementById('comboEditBox').classList.remove('hidden');
+      document.getElementById('c_id_hint').textContent = '選好成員後會自動產生編號';
+    }
+
+    async function editCombo(id) {
+      const { ok, data } = await shareApi(`/api/combos/${encodeURIComponent(id)}`);
+      if (!ok) { alert('讀取失敗'); return; }
+      const c = data.combo || {};
+      comboEditing = {
+        id, name: c.name || '', style: c.style || 'F', size: c.size || 'F',
+        sell: c.sell || '', shopeeSell: c.shopeeSell || '', tags: c.tags || [], members: c.members || [],
+      };
+      fillComboForm();
+      document.getElementById('comboEditBox').classList.remove('hidden');
+      document.getElementById('c_id_hint').textContent = '';
+    }
+
+    function closeComboEdit() {
+      document.getElementById('comboEditBox').classList.add('hidden');
+      comboEditing = null;
+    }
+
+    function fillComboForm() {
+      const c = comboEditing;
+      setVal('c_id', c.id); setVal('c_name', c.name); setVal('c_style', c.style);
+      document.getElementById('c_style').placeholder = '留空則用名稱';
+      setVal('c_size', c.size); setVal('c_sell', c.sell); setVal('c_shopee_sell', c.shopeeSell);
+      document.querySelectorAll('.c-tag').forEach(cb => { cb.checked = (c.tags || []).includes(cb.value); });
+      renderComboMembers();
+      recalcComboPricing();
+    }
+
+    function comboFlags() {
+      const tags = Array.from(document.querySelectorAll('.c-tag:checked')).map(cb => cb.value);
+      return { tags, vendorShip: tags.includes('廠商出貨包運費'), consolidatedShip: tags.includes('集運出客人') };
+    }
+
+    // 成本沿用產品建立那套：成員批價加總後丟進 calcStockCost，
+    // 再用同樣的 calcMiscCost／calcMargin 算毛利率，不另開一份公式。
+    function comboTotals() {
+      const index = buildItemIndex();
+      let price = 0, weight = 0, unresolved = 0, has1S = false;
+      (comboEditing.members || []).forEach(m => {
+        const qty = Math.max(1, parseInt(m.qty, 10) || 1);
+        const { hit } = resolveComboMember(m, index);
+        if (!hit) { unresolved++; return; }
+        price += (Number(hit.variant.wholesale) || 0) * qty;
+        weight += (Number(hit.variant.weight) || 0) * qty;
+        const code = String(hit.product.code || '').toUpperCase();
+        if (/^[A-Z]{2}1S/.test(code)) has1S = true;
+      });
+      return { price, weight, unresolved, has1S };
+    }
+
+    function recalcComboPricing() {
+      if (!comboEditing) return;
+      comboEditing.name = pVal('c_name'); comboEditing.style = pVal('c_style');
+      comboEditing.size = pVal('c_size'); comboEditing.sell = pVal('c_sell');
+      comboEditing.shopeeSell = pVal('c_shopee_sell');
+      comboEditing.tags = comboFlags().tags;
+
+      const t = comboTotals();
+      document.getElementById('c_wholesale').textContent = t.unresolved ? `${t.price}（${t.unresolved} 個成員對不到）` : String(t.price);
+      document.getElementById('c_weight').textContent = String(Number(t.weight.toFixed(3)));
+
+      const flags = comboFlags();
+      const cost = calcStockCost(t.price, t.weight, flags);
+      renderMarginCell(document.getElementById('c_margin'), Number(pVal('c_sell')) || 0, cost, flags, MARGIN_PASS_DEFAULT, AD_RATE_DEFAULT);
+      renderMarginCell(document.getElementById('c_shopee_margin'), Number(pVal('c_shopee_sell')) || 0, cost, flags, MARGIN_PASS_SHOPEE, AD_RATE_SHOPEE);
+    }
+
+    function renderComboMembers() {
+      const box = document.getElementById('c_members');
+      const index = buildItemIndex();
+      const ms = comboEditing.members || [];
+      if (!ms.length) { box.innerHTML = '<div class="text-xs text-gray-400 py-2">還沒有成員，用下面的搜尋加入</div>'; return; }
+      box.innerHTML = ms.map((m, i) => {
+        const { hit, via, reason } = resolveComboMember(m, index);
+        const info = hit
+          ? `<span class="text-gray-700">${hit.product.name || ''}　${hit.variant.style || ''} ${hit.variant.size || ''}</span>
+             <span class="text-gray-400 ml-1">批價 ${hit.variant.wholesale || 0}　重量 ${hit.variant.weight || 0}kg　(${via})</span>`
+          : `<span class="text-red-500">對不到：${reason || '未知'}</span>`;
+        return `<div class="flex items-center gap-2 text-xs py-1 border-b">
+          <span class="font-mono w-32 shrink-0">${m.barcode || m.code || ''}</span>
+          <input type="number" min="1" value="${m.qty || 1}" class="w-14 border rounded px-1 py-0.5" onchange="setComboEditQty(${i}, this.value)">
+          <div class="flex-1">${info}</div>
+          <button onclick="removeComboEditMember(${i})" class="text-gray-400 hover:text-red-600 px-1">×</button>
+        </div>`;
+      }).join('');
+    }
+
+    function setComboEditQty(i, v) {
+      comboEditing.members[i].qty = Math.max(1, parseInt(v, 10) || 1);
+      renderComboMembers(); recalcComboPricing(); ensureComboCode();
+    }
+
+    function removeComboEditMember(i) {
+      comboEditing.members.splice(i, 1);
+      renderComboMembers(); recalcComboPricing(); ensureComboCode();
+    }
+
+    function renderComboEditSearch() {
+      const kw = (document.getElementById('c_search').value || '').trim();
+      const box = document.getElementById('c_search_result');
+      if (!kw) { box.innerHTML = ''; return; }
+      const index = buildItemIndex();
+      const hits = [];
+      for (const e of index.byBarcode.values()) {
+        if (!matchKeywords(`${e.product.code} ${e.product.name || ''} ${e.variant.barcode || ''} ${e.variant.style || ''} ${e.variant.size || ''}`, kw)) continue;
+        hits.push(e);
+        if (hits.length >= 30) break;
+      }
+      box.innerHTML = hits.length
+        ? hits.map(e => `<div class="flex items-center gap-2 text-xs py-1 hover:bg-gray-50 cursor-pointer"
+              onclick="addComboEditMember(${JSON.stringify(String(e.variant.barcode || '')).replace(/"/g, '&quot;')}, ${JSON.stringify(String(e.product.code || '')).replace(/"/g, '&quot;')})">
+            <span class="font-mono w-32 shrink-0">${e.variant.barcode || '（無條碼）'}</span>
+            <span class="flex-1">${e.product.name || ''}　${e.variant.style || ''} ${e.variant.size || ''}</span>
+            <span class="text-gray-400">批價 ${e.variant.wholesale || 0}</span>
+          </div>`).join('')
+        : '<div class="text-xs text-gray-400 py-1">找不到符合的品項</div>';
+    }
+
+    function addComboEditMember(barcode, code) {
+      const key = barcode || code;
+      const exist = (comboEditing.members || []).find(m => (m.barcode || m.code) === key);
+      if (exist) exist.qty = (parseInt(exist.qty, 10) || 1) + 1;
+      else comboEditing.members.push({ barcode, code, qty: 1 });
+      document.getElementById('c_search').value = '';
+      document.getElementById('c_search_result').innerHTML = '';
+      renderComboMembers(); recalcComboPricing(); ensureComboCode();
+    }
+
+    // 編號在「選完成員」之後才產生，因為材積要看成員決定。
+    // 已經有編號的就不再重編——編號一旦發出去就不該變。
+    async function ensureComboCode() {
+      if (!comboEditing || comboEditing.id) return;
+      if (!(comboEditing.members || []).length) return;
+      const size = comboTotals().has1S ? '1S' : '0S';
+      const { ok, data } = await shareApi('/api/combos/next-code', {
+        method: 'POST', body: JSON.stringify({ size }),
+      });
+      if (!ok) { document.getElementById('c_id_hint').textContent = '取號失敗：' + (data.error || ''); return; }
+      comboEditing.id = data.code;
+      setVal('c_id', data.code);
+      document.getElementById('c_id_hint').textContent = `材積 ${size}（成員${size === '1S' ? '含 1S' : '皆為 0S'}）`;
+    }
+
+    async function saveCombo() {
+      if (!comboEditing) return;
+      recalcComboPricing();
+      if (!(comboEditing.members || []).length) { alert('請先加入成員'); return; }
+      await ensureComboCode();
+      if (!comboEditing.id) { alert('還沒有複合編號，請確認連線後再試'); return; }
+      if (!pVal('c_name').trim()) { alert('請填寫名稱'); return; }
+
+      const { ok, status, data } = await shareApi(`/api/combos/${encodeURIComponent(comboEditing.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ data: comboEditing, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+      });
+      if (!ok) { alert('儲存失敗：' + (data.error || status)); return; }
+      await refreshComboList();
+      alert(`已儲存 ${comboEditing.id}`);
+    }
+
+    async function deleteCombo() {
+      if (!comboEditing || !comboEditing.id) return;
+      if (!confirm(`確定刪除複合商品「${comboEditing.id} ${comboEditing.name}」？\n\n⚠ 這會影響所有人，且無法復原。`)) return;
+      const { ok, data } = await shareApi(`/api/combos/${encodeURIComponent(comboEditing.id)}`, { method: 'DELETE' });
+      if (!ok) { alert('刪除失敗：' + (data.error || '')); return; }
+      closeComboEdit();
+      await refreshComboList();
+    }
+  </script>
+
+  <!-- =================== 複合商品 =================== -->
+  <div id="tab-combo" style="display:none" class="bg-gray-50 min-h-screen">
+    <div class="max-w-7xl mx-auto p-4">
+      <div class="bg-white rounded-lg shadow-md p-4 mb-4">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <h2 class="text-xl font-semibold text-gray-700 mr-2">🎁 複合商品</h2>
+          <button onclick="newCombo()" class="bg-indigo-600 text-white text-sm px-4 py-1.5 rounded hover:bg-indigo-700">＋ 新增複合商品</button>
+          <input id="comboListSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋編號或名稱" oninput="resetComboPage()">
+          <button onclick="refreshComboList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
+          <span id="comboListCount" class="text-xs text-gray-400"></span>
+        </div>
+        <p class="text-xs text-gray-500">
+          複合商品的成員、售價與毛利率都在這裡管理。產品建立分頁上的「複合」規格只是引用，
+          在那裡移除不會刪掉這裡的資料。編號規則：BD ＋ 材積（成員只要有一個 1S 就是 1S）＋ 六位流水號。
+        </p>
+        <div id="comboListBox" class="flex flex-wrap gap-2 mt-3"></div>
+        <div id="comboListPager" class="mt-2"></div>
+      </div>
+
+      <div id="comboEditBox" class="bg-white rounded-lg shadow-md p-4 mb-6 hidden">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-semibold text-gray-700">編輯複合商品</h3>
+          <div class="flex items-center gap-2">
+            <button onclick="saveCombo()" class="bg-indigo-600 text-white text-sm px-4 py-1.5 rounded hover:bg-indigo-700">💾 儲存</button>
+            <button onclick="deleteCombo()" class="text-xs text-red-500 hover:text-red-700">刪除這個複合商品</button>
+            <button onclick="closeComboEdit()" class="text-xs text-gray-400 hover:text-gray-600">關閉</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">複合編號</label>
+            <input id="c_id" type="text" class="w-full border rounded px-2 py-1.5 text-sm font-mono bg-gray-50" readonly>
+            <div id="c_id_hint" class="text-xs text-gray-400 mt-1">選好成員後自動產生</div>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm font-bold text-gray-700 mb-1">名稱 <span class="text-red-500">*</span></label>
+            <input id="c_name" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="例：登山杖4入組">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">標籤<span class="text-gray-400 font-normal text-xs ml-1">影響成本公式</span></label>
+            <div id="c_tags" class="flex flex-wrap gap-1"></div>
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">樣式</label>
+            <input id="c_style" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="F">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">尺寸</label>
+            <input id="c_size" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="F">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">售價（官網／momo）</label>
+            <input id="c_sell" type="number" class="w-full border rounded px-2 py-1.5 text-sm" oninput="recalcComboPricing()">
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1">蝦皮售價</label>
+            <input id="c_shopee_sell" type="number" class="w-full border rounded px-2 py-1.5 text-sm" oninput="recalcComboPricing()">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 bg-gray-50 rounded p-3">
+          <div><div class="text-xs text-gray-500">成員加總批價</div><div id="c_wholesale" class="text-sm font-bold">—</div></div>
+          <div><div class="text-xs text-gray-500">成員加總重量</div><div id="c_weight" class="text-sm font-bold">—</div></div>
+          <div><div class="text-xs text-gray-500">毛利率（官網／momo）</div><div id="c_margin" class="text-lg">—</div></div>
+          <div><div class="text-xs text-gray-500">蝦皮毛利率</div><div id="c_shopee_margin" class="text-lg">—</div></div>
+        </div>
+
+        <div class="text-sm font-bold text-gray-700 mb-1">成員</div>
+        <div id="c_members" class="bg-white border rounded p-2 mb-2 max-h-72 overflow-y-auto"></div>
+        <input id="c_search" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="🔍 搜尋要加入的品項（商品編號、名稱、條碼、樣式）" oninput="renderComboEditSearch()">
+        <div id="c_search_result" class="bg-white border rounded mt-1 max-h-52 overflow-y-auto"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="tab-po1688" style="display:none" class="bg-gray-50 min-h-screen">
     <div class="max-w-6xl mx-auto p-6">
       <h2 class="text-xl font-semibold text-gray-700 mb-1">🛒 1688 採購單</h2>
