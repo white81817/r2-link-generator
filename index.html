@@ -2128,6 +2128,20 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <label class="block text-sm font-bold text-gray-700 mb-1">商品編號 <span class="text-red-500">*</span></label>
             <input id="p_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="CF0S014700">
             <div id="p_code_warning" class="text-red-500 text-xs mt-1" style="display:none">⚠ 商品編號尾數應為 00</div>
+            <div class="flex items-center gap-1 mt-1">
+              <select id="p_code_warehouse" class="border rounded px-1 py-1 text-xs">
+                <option value="">倉庫</option>
+                <option value="SH">SH 五權倉</option>
+                <option value="CF">CF 五工倉</option>
+              </select>
+              <select id="p_code_size" class="border rounded px-1 py-1 text-xs">
+                <option value="">材積</option>
+                <option value="0S">0S（0～2才）</option>
+                <option value="1S">1S（2才以上）</option>
+              </select>
+              <button onclick="generateProductCode()" class="text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 whitespace-nowrap">產生編號</button>
+            </div>
+            <div id="p_code_hint" class="text-xs text-gray-400 mt-1"></div>
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-bold text-gray-700 mb-1">商品名稱 <span class="text-red-500">*</span></label>
@@ -2377,6 +2391,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <table class="w-full text-sm border-collapse">
             <thead>
               <tr class="bg-gray-100 text-gray-600 text-xs">
+                <th class="border px-2 py-2 text-left whitespace-nowrap bg-gray-50">品項條碼<br><span class="font-normal text-gray-400">新商品自動</span></th>
                 <th class="border px-2 py-1 text-left whitespace-nowrap">
                   樣式 <span class="text-red-400">*</span>
                   <div class="text-gray-400 font-normal">1shop規格名稱1</div>
@@ -2409,7 +2424,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">有效天數</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">交貨天數</th>
                 <th class="border px-2 py-2 text-left whitespace-nowrap">銷售模式</th>
-                <th class="border px-2 py-2 text-left whitespace-nowrap">品項條碼</th>
                 <th class="border px-2 py-2"></th>
               </tr>
             </thead>
@@ -2460,6 +2474,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     function pVal(id) {
       return (document.getElementById(id) || {}).value || '';
     }
+
+    // setVal 原本只是載入函式裡的區域變數，別處用到會直接 ReferenceError，提到全域
+    function setVal(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
 
     function getTagsValue() {
       const checked = Array.from(document.querySelectorAll('#p_tags .tag-cb:checked')).map(cb => cb.value);
@@ -2742,13 +2759,58 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
 
+    // ===== 商品編號／品項條碼規則 =====
+    //   SH 0S 0001 00
+    //   ├倉庫 ├材積 ├四位流水號 └兩位規格流水號（第一個規格是 00）
+    const CODE_WAREHOUSES = { SH: '五權倉', CF: '五工倉' };
+    const CODE_SIZES = { '0S': '0～2才', '1S': '2才以上' };
+    const CODE_RE = /^(SH|CF)([01]S)(\d{4})00$/;
+
+    function parseProductCode(code) {
+      const m = CODE_RE.exec(String(code || '').trim().toUpperCase());
+      return m ? { warehouse: m[1], size: m[2], serial: m[3], prefix: m[1] + m[2] } : null;
+    }
+
+    // 只有「編號完全符合規則」才自動編條碼。
+    // 舊資料的編號千奇百怪，硬套 slice(0,-2) 會生出 ABC101 這種垃圾。
+    // 另外 row.dataset.noauto 是給「載入／匯入進來的列」用的：那些列的條碼
+    // 一律照原樣保留，程式不碰——沒有條碼就是沒有，不要自己編一個。
     function autoBarcode(row) {
-      const code = pVal('p_code').trim();
       const barcodeEl = row.querySelector('.v-barcode');
-      if (code && !barcodeEl.dataset.manual) {
-        barcodeEl.value = code.slice(0, -2) + String(parseInt(row.dataset.idx)).padStart(2, '0');
-        calcVariant(row);
+      if (row.dataset.noauto || barcodeEl.dataset.manual) return;
+      const parsed = parseProductCode(pVal('p_code'));
+      if (!parsed) return;
+      const seq = parseInt(row.dataset.idx, 10) - 1;   // 第一列 → 00
+      if (seq > 99) return;
+      barcodeEl.value = parsed.prefix + parsed.serial + String(seq).padStart(2, '0');
+      calcVariant(row);
+    }
+
+    // 跟 worker 要下一個沒用過的流水號。號碼的權威來源是 USALE 匯出的全商品
+    // 清單（很多商品只存在 ERP），由〔匯入 USALE 商品資料〕時一併灌進去當基準。
+    async function generateProductCode() {
+      const warehouse = pVal('p_code_warehouse');
+      const size = pVal('p_code_size');
+      const hint = document.getElementById('p_code_hint');
+      if (!warehouse || !size) { alert('請先選擇倉庫與材積'); return; }
+      if (!shareToken) { alert('請先在上面「共用商品庫」輸入通行碼連線，編號要由伺服器統一發放才不會撞號'); return; }
+      const cur = pVal('p_code').trim();
+      if (cur && !confirm(`商品編號目前是「${cur}」，要換成新產生的嗎？`)) return;
+
+      hint.textContent = '取號中…';
+      const { ok, status, data } = await shareApi('/api/codes/next', {
+        method: 'POST',
+        body: JSON.stringify({ warehouse, size }),
+      });
+      if (!ok) {
+        hint.textContent = '';
+        alert('取號失敗：' + (data.error || status) + (status === 404 ? '\n（worker 可能還沒部署到最新版）' : ''));
+        return;
       }
+      const code = data.codes[0];
+      setVal('p_code', code);
+      document.getElementById('p_code').dispatchEvent(new Event('input'));
+      hint.textContent = `已取得 ${code}（${CODE_WAREHOUSES[warehouse]}／${CODE_SIZES[size]}，此前綴用到 ${String(data.next).padStart(4, '0')}）`;
     }
 
     function reindexRows() {
@@ -2778,7 +2840,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       recalcAllVariants();
     }
 
-    function addVariantRow(data) {
+    function addVariantRow(data, opts) {
       variantRowCount++;
       const idx = variantRowCount;
       const d = data || {};
@@ -2787,6 +2849,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       tr.dataset.idx = idx;
       tr.className = 'hover:bg-gray-50';
       tr.innerHTML = `
+        <td class="border px-1 py-1 bg-gray-50"><input class="v-barcode w-28 border-0 bg-transparent px-1 text-sm font-mono" type="text" value="${d.barcode||''}" placeholder="—"
+          oninput="this.dataset.manual='1';calcVariant(this.closest('tr'))"></td>
         <td class="border px-1 py-1"><input class="v-style w-20 border-0 bg-transparent px-1 text-sm" type="text" value="${d.style||''}" placeholder="紅色"></td>
         <td class="border px-1 py-1"><input class="v-size w-14 border-0 bg-transparent px-1 text-sm" type="text" value="${d.size||''}" placeholder="F"></td>
         <td class="border px-1 py-1"><input class="v-wholesale w-20 border-0 bg-transparent px-1 text-sm text-right" type="number" step="0.01" value="${d.wholesale||''}" placeholder="0"
@@ -2832,11 +2896,11 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <option value="下架" ${d.salesMode==='下架'?'selected':''}>下架</option>
           </select>
         </td>
-        <td class="border px-1 py-1"><input class="v-barcode w-32 border-0 bg-transparent px-1 text-sm font-mono" type="text" value="${d.barcode||''}" placeholder="自動"
-          oninput="this.dataset.manual='1';calcVariant(this.closest('tr'))"></td>
         <td class="border px-1 py-1 text-center"><button onclick="this.closest('tr').remove();reindexRows()" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
       `;
       tbody.appendChild(tr);
+      // 載入／匯入進來的列要在 autoBarcode 之前就鎖住，否則條碼會先被覆蓋掉才鎖
+      if (opts && opts.noauto) tr.dataset.noauto = '1';
       autoBarcode(tr);
       refreshVariantImageSelects();
       if (d.wholesale || d.weight) calcVariant(tr);
@@ -3993,7 +4057,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // 將一份商品資料套用到表單（本機載入與共用庫載入共用）
     function applyProductData(data) {
       if (!data) return;
-      const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
       setVal('p_code', data.code);     setVal('p_name', data.name);
       setVal('p_vendor', data.vendor); setVal('p_preorder_note', data.preorderNote);
       setVal('p_highlight', data.highlight);
@@ -4031,7 +4094,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.getElementById('variantRows').innerHTML = '';
       variantRowCount = 0;
       (data.variants || []).forEach(v => {
-        const tr = addVariantRow(v);
+        // 從儲存／匯入進來的列一律鎖住：條碼照原樣保留，空白就讓它空白
+        const tr = addVariantRow(v, { noauto: true });
         if (v.barcodeManual) tr.querySelector('.v-barcode').dataset.manual = '1';
       });
 
@@ -4066,7 +4130,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         const code = this.value.trim();
         document.getElementById('p_code_warning').style.display = (code && !code.endsWith('00')) ? 'block' : 'none';
         document.querySelectorAll('#variantRows tr').forEach(r => {
-          if (!r.querySelector('.v-barcode').dataset.manual) autoBarcode(r);
+          autoBarcode(r);   // 已載入的列帶 noauto，函式內會自己跳過
         });
         renderSavedList(); // 更新active狀態
       });
@@ -4999,13 +5063,37 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         renderSavedList();
 
         let uploaded = 0, failed = [];
+        let baselineMsg = '';
         if (shareToken) {
-          for (const p of toImport) {
-            const { ok } = await shareApi(`/api/products/${encodeURIComponent(p.code)}`, {
+          // 逐筆送太慢（每筆都會重寫共用庫索引），改用批次端點
+          const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
+          const BATCH = 50;
+          for (let i = 0; i < toImport.length; i += BATCH) {
+            const chunk = toImport.slice(i, i + BATCH);
+            const { ok, data } = await shareApi('/api/products', {
               method: 'PUT',
-              body: JSON.stringify({ data: p, force: true, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+              body: JSON.stringify({ items: chunk.map(p => ({ code: p.code, data: p })), force: true, updatedBy }),
             });
-            ok ? uploaded++ : failed.push(p.code);
+            if (ok && Array.isArray(data.saved)) {
+              uploaded += data.saved.length;
+              failed.push(...chunk.filter(p => !data.saved.includes(p.code)).map(p => p.code));
+            } else {
+              failed.push(...chunk.map(p => p.code));
+            }
+          }
+
+          // 這份 USALE 清單是「號碼用到哪」的權威來源：檔案裡的每個商品編號
+          // （不只匯入的那些）都拿去更新流水號基準，之後產生編號才不會撞號。
+          const allCodes = [...new Set(rows.map(r => String(r['商品編號'] || '').trim()).filter(Boolean))];
+          const bl = await shareApi('/api/codes/baseline', {
+            method: 'POST',
+            body: JSON.stringify({ codes: allCodes }),
+          });
+          if (bl.ok) {
+            const seq = bl.data.seq || {};
+            const parts = Object.keys(seq).sort().map(k => `${k}→${String(seq[k]).padStart(4, '0')}`);
+            baselineMsg = `\n\n編號基準已更新（檔案 ${allCodes.length} 個編號，其中 ${bl.data.matched} 個符合規則）：\n${parts.join('、') || '（無）'}`;
+            if (bl.data.unmatchedCount) baselineMsg += `\n不符合規則、未納入基準：${bl.data.unmatchedCount} 個`;
           }
           await refreshSharedList();
         }
@@ -5015,8 +5103,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           `・寫入本機：${toImport.length} 個商品\n` +
           (overwrite ? '' : (dup.length ? `・略過已存在：${dup.length} 個\n` : '')) +
           (shareToken
-            ? `・上傳共用庫：成功 ${uploaded} 個${failed.length ? `，失敗 ${failed.length} 個（${failed.join('、')}）` : ''}`
+            ? `・上傳共用庫：成功 ${uploaded} 個${failed.length ? `，失敗 ${failed.length} 個（${failed.slice(0, 20).join('、')}${failed.length > 20 ? '…' : ''}）` : ''}`
             : '・未連線共用庫，資料僅存在本機')
+          + baselineMsg
         );
       } catch (e) {
         alert('匯入失敗：' + e.message);

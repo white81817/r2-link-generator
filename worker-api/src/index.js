@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-26-tags-v2',
+  version: '2026-08-26-codeseq-v1',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -801,6 +801,85 @@ app.post('/api/products/rebuild-list', async (c) => {
 
   await c.env.CACHE.put('product:list', JSON.stringify(rebuilt));
   return c.json({ ok: true, count: rebuilt.length, missing });
+});
+
+// ===== 商品編號流水號 =====
+//   SH 0S 0001 00 ── 倉庫(2) + 材積(2) + 四位流水號 + 兩位規格流水號
+// 號碼用到哪，權威來源是 USALE 匯出的全商品清單（很多商品只存在 ERP，
+// 共用庫看不到），所以先用 /api/codes/baseline 灌進來當底，
+// 之後 /api/codes/next 每發一號就往上加，並比對共用庫避免撞號。
+const CODE_RE = /^(SH|CF)([01]S)(\d{4})/;
+
+app.get('/api/codes', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  const raw = await c.env.CACHE.get('codeseq:all');
+  return c.json({ ok: true, seq: raw ? JSON.parse(raw) : {} });
+});
+
+// POST /api/codes/baseline — body: { codes: ["SH0S000100", ...] }
+// 只取每個「倉庫+材積」用到的最大流水號，取代不了就不動（只會往上調）
+app.post('/api/codes/baseline', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const codes = Array.isArray(body && body.codes) ? body.codes : null;
+  if (!codes) return c.json({ error: '缺少 codes' }, 400);
+
+  const raw = await c.env.CACHE.get('codeseq:all');
+  const seq = raw ? JSON.parse(raw) : {};
+  let matched = 0;
+  const unmatched = [];
+  for (const c0 of codes) {
+    const m = CODE_RE.exec(String(c0 || '').trim().toUpperCase());
+    if (!m) { if (unmatched.length < 50) unmatched.push(String(c0)); continue; }
+    matched++;
+    const prefix = m[1] + m[2];
+    const n = parseInt(m[3], 10);
+    if (!(prefix in seq) || n > seq[prefix]) seq[prefix] = n;
+  }
+  await c.env.CACHE.put('codeseq:all', JSON.stringify(seq));
+  return c.json({ ok: true, seq, matched, unmatchedCount: codes.length - matched, unmatched });
+});
+
+// POST /api/codes/next — body: { warehouse: "SH", size: "0S", count: 1 }
+app.post('/api/codes/next', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const warehouse = String((body && body.warehouse) || '').toUpperCase();
+  const size = String((body && body.size) || '').toUpperCase();
+  if (!['SH', 'CF'].includes(warehouse)) return c.json({ error: '倉庫只能是 SH 或 CF' }, 400);
+  if (!['0S', '1S'].includes(size)) return c.json({ error: '材積只能是 0S 或 1S' }, 400);
+  const count = Math.min(Math.max(parseInt((body && body.count) || 1, 10) || 1, 1), 50);
+
+  const prefix = warehouse + size;
+  const raw = await c.env.CACHE.get('codeseq:all');
+  const seq = raw ? JSON.parse(raw) : {};
+
+  // 共用庫裡已經有的編號也算數，免得基準沒灌到就重複發號
+  const listRaw = await c.env.CACHE.get('product:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  const used = new Set();
+  let maxInList = 0;
+  for (const it of list) {
+    const m = CODE_RE.exec(String(it.code || '').toUpperCase());
+    if (!m || m[1] + m[2] !== prefix) continue;
+    used.add(parseInt(m[3], 10));
+    maxInList = Math.max(maxInList, parseInt(m[3], 10));
+  }
+
+  let n = Math.max(seq[prefix] || 0, maxInList);
+  const codes = [];
+  while (codes.length < count) {
+    n++;
+    if (n > 9999) return c.json({ error: `${prefix} 的四位流水號已用到 9999，無法再發號` }, 409);
+    if (used.has(n)) continue;
+    codes.push(prefix + String(n).padStart(4, '0') + '00');
+  }
+
+  seq[prefix] = n;
+  await c.env.CACHE.put('codeseq:all', JSON.stringify(seq));
+  return c.json({ ok: true, codes, prefix, next: n });
 });
 
 // DELETE /api/products/:code  (一般通行碼即可刪除)
