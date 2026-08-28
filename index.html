@@ -2129,12 +2129,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input id="p_code" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="CF0S014700">
             <div id="p_code_warning" class="text-red-500 text-xs mt-1" style="display:none">⚠ 商品編號尾數應為 00</div>
             <div class="flex items-center gap-1 mt-1">
-              <select id="p_code_warehouse" class="border rounded px-1 py-1 text-xs">
+              <select id="p_code_warehouse" class="border rounded px-1 py-1 text-xs" onchange="showCodeSeq()">
                 <option value="">倉庫</option>
                 <option value="SH">SH 五權倉</option>
                 <option value="CF">CF 五工倉</option>
               </select>
-              <select id="p_code_size" class="border rounded px-1 py-1 text-xs">
+              <select id="p_code_size" class="border rounded px-1 py-1 text-xs" onchange="showCodeSeq()">
                 <option value="">材積</option>
                 <option value="0S">0S（0～2才）</option>
                 <option value="1S">1S（2才以上）</option>
@@ -2784,6 +2784,23 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (seq > 99) return;
       barcodeEl.value = parsed.prefix + parsed.serial + String(seq).padStart(2, '0');
       calcVariant(row);
+    }
+
+    // 選好倉庫＋材積就先把「這個前綴用到幾號」秀出來，
+    // 讓人一眼看得出編號基準到底有沒有灌進去，不用猜。
+    async function showCodeSeq() {
+      const hint = document.getElementById('p_code_hint');
+      const warehouse = pVal('p_code_warehouse');
+      const size = pVal('p_code_size');
+      if (!warehouse || !size) { hint.textContent = ''; return; }
+      if (!shareToken) { hint.textContent = '未連線共用商品庫，無法取號'; return; }
+      const { ok, data } = await shareApi('/api/codes');
+      if (!ok) { hint.textContent = ''; return; }
+      const prefix = warehouse + size;
+      const used = (data.seq || {})[prefix];
+      hint.textContent = used
+        ? `${prefix} 目前用到 ${String(used).padStart(4, '0')}，下一號 ${String(used + 1).padStart(4, '0')}`
+        : `${prefix} 還沒有編號基準（匯入 USALE 商品資料會自動灌），下一號會從 0001 開始`;
     }
 
     // 跟 worker 要下一個沒用過的流水號。號碼的權威來源是 USALE 匯出的全商品
