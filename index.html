@@ -2069,9 +2069,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               <input type="checkbox" id="removeLocalAfterUpload" class="w-4 h-4">
               上傳成功後，把這些商品從本機儲存中移除（共用庫已有一份，不需重複保留）
             </label>
-            <div class="flex gap-2">
+            <div class="flex gap-2 items-center">
               <button onclick="doUploadSelected()" class="bg-amber-100 hover:bg-amber-200 text-xs rounded px-3 py-1.5 font-medium">開始上傳</button>
               <button onclick="closeUploadPicker()" class="text-xs text-gray-400 hover:text-gray-600 px-2">取消</button>
+              <span id="uploadProgress" class="text-xs text-gray-600"></span>
             </div>
           </div>
 
@@ -3487,14 +3488,47 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                  + (removeLocal ? '\n上傳成功的商品會從本機移除。' : ''))) return;
 
       const db = getDB();
+      const updatedBy = localStorage.getItem(SHARE_USER_KEY) || '';
       const done = [], failed = [];
-      for (const code of picked) {
-        const { ok } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
+      const progress = document.getElementById('uploadProgress');
+      const setProgress = (t) => { if (progress) progress.textContent = t; };
+
+      // 一筆一趟太慢：162 個商品就是 162 次往返，而且 worker 每筆都會重寫
+      // product:list，KV 對同一個 key 有寫入頻率限制，寫愈快被節流得愈兇。
+      // 改成分批送，一批只寫一次清單。
+      const BATCH = 50;
+      let bulkSupported = true;
+      for (let i = 0; i < picked.length && bulkSupported; i += BATCH) {
+        const chunk = picked.slice(i, i + BATCH);
+        setProgress(`上傳中… ${Math.min(i + chunk.length, picked.length)} / ${picked.length}`);
+        const { ok, status, data } = await shareApi('/api/products', {
           method: 'PUT',
-          body: JSON.stringify({ data: db[code], force: true, updatedBy: localStorage.getItem(SHARE_USER_KEY) || '' }),
+          body: JSON.stringify({ items: chunk.map(code => ({ code, data: db[code] })), force: true, updatedBy }),
         });
-        ok ? done.push(code) : failed.push(code);
+        if (ok && data && Array.isArray(data.saved)) {
+          done.push(...data.saved);
+          failed.push(...chunk.filter(c => !data.saved.includes(c)));
+        } else if (status === 404 || status === 405) {
+          // worker 還沒部署到有批次端點的版本，退回逐筆上傳而不是整批失敗
+          bulkSupported = false;
+        } else {
+          failed.push(...chunk);
+        }
       }
+
+      if (!bulkSupported) {
+        done.length = 0; failed.length = 0;
+        for (let i = 0; i < picked.length; i++) {
+          const code = picked[i];
+          setProgress(`上傳中（逐筆模式）… ${i + 1} / ${picked.length}`);
+          const { ok } = await shareApi(`/api/products/${encodeURIComponent(code)}`, {
+            method: 'PUT',
+            body: JSON.stringify({ data: db[code], force: true, updatedBy }),
+          });
+          ok ? done.push(code) : failed.push(code);
+        }
+      }
+      setProgress('');
 
       // 只移除確定上傳成功的，失敗的留在本機以免資料遺失
       if (removeLocal && done.length) {

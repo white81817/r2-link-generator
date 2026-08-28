@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-22-cartplan-v1',
+  version: '2026-08-26-bulkproducts-v1',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -684,6 +684,74 @@ app.put('/api/products/:code', async (c) => {
   await c.env.CACHE.put('product:list', JSON.stringify(list));
 
   return c.json({ ok: true, updatedAt: now });
+});
+
+// PUT /api/products — 批次儲存（上傳本機資料用）
+// 逐筆打 /api/products/:code 有兩個問題：一是 N 趟往返很慢，
+// 二是每筆都重寫 product:list —— KV 對「同一個 key」有寫入頻率限制，
+// 連續快寫會被節流，而且讀到舊清單時會把前面剛寫進去的洗掉。
+// 這裡把 product:<code> 平行寫（不同 key 沒有這個限制），product:list 最後只寫一次。
+const BULK_MAX = 100;
+app.put('/api/products', async (c) => {
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+
+  const items = Array.isArray(body && body.items) ? body.items : null;
+  if (!items || !items.length) return c.json({ error: '缺少 items' }, 400);
+  if (items.length > BULK_MAX) return c.json({ error: `一次最多 ${BULK_MAX} 筆，收到 ${items.length}` }, 400);
+
+  const updatedBy = String(body.updatedBy || '').trim().slice(0, 40);
+  const force = !!body.force;
+  const now = new Date().toISOString();
+
+  const saved = [];
+  const conflicts = [];
+  const invalid = [];
+  const summaries = [];
+
+  // 併發拉高會讓 KV 開始丟錯，20 是實務上穩定的數字
+  const CHUNK = 20;
+  for (let i = 0; i < items.length; i += CHUNK) {
+    await Promise.all(items.slice(i, i + CHUNK).map(async (item) => {
+      const code = String((item && item.code) || '').trim();
+      if (!code || !item.data || typeof item.data !== 'object') { invalid.push(code || '(無編號)'); return; }
+
+      if (!force) {
+        const existingRaw = await c.env.CACHE.get(`product:${code}`);
+        const existing = existingRaw ? JSON.parse(existingRaw) : null;
+        if (existing && (item.baseUpdatedAt || '') !== (existing.updatedAt || '')) {
+          conflicts.push(code);
+          return;
+        }
+      }
+
+      await c.env.CACHE.put(`product:${code}`, JSON.stringify({ code, data: item.data, updatedAt: now, updatedBy }));
+      saved.push(code);
+      summaries.push({
+        code,
+        name:   String(item.data.name || ''),
+        vendor: String(item.data.vendor || ''),
+        updatedAt: now,
+        updatedBy,
+      });
+    }));
+  }
+
+  if (summaries.length) {
+    const listRaw = await c.env.CACHE.get('product:list');
+    const list = listRaw ? JSON.parse(listRaw) : [];
+    summaries.forEach((sm) => {
+      const at = list.findIndex(x => x.code === sm.code);
+      if (at >= 0) list[at] = sm; else list.unshift(sm);
+    });
+    await c.env.CACHE.put('product:list', JSON.stringify(list));
+  }
+
+  return c.json({ ok: true, saved, conflicts, invalid, updatedAt: now });
 });
 
 // DELETE /api/products/:code  (一般通行碼即可刪除)
