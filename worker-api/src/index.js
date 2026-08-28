@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-26-skipexisting-v1',
+  version: '2026-08-26-tags-v1',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -617,6 +617,15 @@ app.delete('/api/quotes/:id', async (c) => {
 
 // ── 共用商品庫（產品建立）────────────────────────────────────────────────
 // 沿用報價單的通行碼，不另設密碼。
+// 摘要清單要能用標籤篩選，就得把標籤一起存進去。
+// tagsChecked 是勾選的固定標籤，tagsCustom 是自由輸入（以頓號／逗號／空白分隔）。
+function productTags(data) {
+  const checked = Array.isArray(data && data.tagsChecked) ? data.tagsChecked.map(String) : [];
+  const custom = String((data && data.tagsCustom) || '')
+    .split(/[、,，\s]+/).map(t => t.trim()).filter(Boolean);
+  return [...new Set([...checked, ...custom])].slice(0, 30);
+}
+
 // KV：product:<code> 存完整資料、product:list 存摘要清單。
 
 // GET /api/products — 取得商品摘要清單
@@ -676,6 +685,7 @@ app.put('/api/products/:code', async (c) => {
     code,
     name:   String(body.data.name || ''),
     vendor: String(body.data.vendor || ''),
+    tags:   productTags(body.data),
     updatedAt: now,
     updatedBy,
   };
@@ -739,6 +749,7 @@ app.put('/api/products', async (c) => {
         code,
         name:   String(item.data.name || ''),
         vendor: String(item.data.vendor || ''),
+        tags:   productTags(item.data),
         updatedAt: now,
         updatedBy,
       });
@@ -756,6 +767,39 @@ app.put('/api/products', async (c) => {
   }
 
   return c.json({ ok: true, saved, skipped, conflicts, invalid, updatedAt: now });
+});
+
+// POST /api/products/rebuild-list — 依現有的 product:<code> 重建摘要清單
+// 摘要多了 tags 欄位，舊資料的清單沒有；重存一次太麻煩，用這支一次補齊。
+app.post('/api/products/rebuild-list', async (c) => {
+  const role = validateProductToken(c.req.header('X-Quote-Token'), c.env);
+  if (!role) return c.json({ error: '未授權' }, 401);
+
+  const listRaw = await c.env.CACHE.get('product:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  const rebuilt = [];
+  const missing = [];
+
+  const CHUNK = 20;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const part = await Promise.all(list.slice(i, i + CHUNK).map(async (it) => {
+      const raw = await c.env.CACHE.get(`product:${it.code}`);
+      if (!raw) { missing.push(it.code); return null; }
+      const rec = JSON.parse(raw);
+      return {
+        code: it.code,
+        name:   String((rec.data && rec.data.name) || it.name || ''),
+        vendor: String((rec.data && rec.data.vendor) || it.vendor || ''),
+        tags:   productTags(rec.data),
+        updatedAt: rec.updatedAt || it.updatedAt || '',
+        updatedBy: rec.updatedBy || it.updatedBy || '',
+      };
+    }));
+    rebuilt.push(...part.filter(Boolean));
+  }
+
+  await c.env.CACHE.put('product:list', JSON.stringify(rebuilt));
+  return c.json({ ok: true, count: rebuilt.length, missing });
 });
 
 // DELETE /api/products/:code  (一般通行碼即可刪除)

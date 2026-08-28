@@ -294,14 +294,18 @@ didibox「🛒 1688 採購」分頁          1688 商品頁（Tampermonkey）
 
 ## 開發注意事項
 
-- 修改 `index.html` 後的語法檢查：
+- 修改 `index.html` 後的語法檢查（**必須連「全部區塊串起來」一起檢查**——
+  各區塊分開檢查抓不到跨 `<script>` 的重複宣告，例如兩個區塊都 `const PAGE_SIZE`，
+  瀏覽器會丟 `Identifier 'X' has already been declared` 並讓整個區塊不執行）：
   ```bash
   node --input-type=module -e "
   import fs from 'fs';
   const h=fs.readFileSync('index.html','utf8');
   const s=[...h.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
-  let ok=true; s.forEach((x,i)=>{try{new Function(x);}catch(e){ok=false;console.log('#'+i,e.message);}});
-  console.log(ok?'語法 OK':'FAILED');"
+  let ok=true;
+  s.forEach((x,i)=>{try{new Function(x);}catch(e){ok=false;console.log('區塊#'+i,e.message);}});
+  try{ new Function(s.join('\n;\n')); }catch(e){ ok=false; console.log('跨區塊衝突:', e.message); }
+  console.log(ok?'語法 OK（含跨區塊）':'FAILED');"
   ```
 - 規格表改欄位時，記得 `<th>` 與 `addVariantRow` 的 `<td>` 數量要一致，否則整張表會錯位。
 - 用 Playwright 實測時，`page.route` 是**後註冊優先**，萬用路由會蓋掉特定路由。

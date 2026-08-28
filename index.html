@@ -2048,34 +2048,35 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         </div>
         <div id="sharePanel" class="hidden">
           <div class="flex flex-wrap items-center gap-2 mb-2">
-            <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="renderSharedList()">
-            <select id="shareVendorFilter" class="border rounded px-2 py-1 text-xs" onchange="renderSharedList()"><option value="">全部廠商</option></select>
-            <select id="shareUserFilter" class="border rounded px-2 py-1 text-xs" onchange="renderSharedList()"><option value="">全部修改者</option></select>
+            <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('share')">
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
             <button onclick="openUploadPicker()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
+            <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 rounded px-3 py-1 hidden" title="舊資料的摘要沒有標籤欄位，按一次補齊就能用標籤篩選">🏷 重建標籤索引</button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
             <span id="shareCount" class="text-xs text-gray-400"></span>
           </div>
+          <div id="shareTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
 
           <!-- 選擇要上傳的本機商品 -->
           <div id="uploadPicker" class="hidden border rounded p-3 mb-2 bg-amber-50">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs font-bold text-gray-700">選擇要上傳到共用庫的本機商品</span>
               <span class="text-xs">
-                <button onclick="toggleAllUploadPick(true)" class="text-blue-500 hover:underline">全選目前顯示</button>
+                <button onclick="toggleAllUploadPick(true)" class="text-blue-500 hover:underline">全選篩選結果</button>
                 <button onclick="toggleAllUploadPick(false)" class="text-gray-400 hover:underline ml-2">全不選</button>
               </span>
             </div>
             <div class="flex flex-wrap items-center gap-2 mb-2">
-              <input id="uploadSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="renderUploadPickList()">
-              <select id="uploadVendorFilter" class="border rounded px-2 py-1 text-xs" onchange="renderUploadPickList()"><option value="">全部廠商</option></select>
+              <input id="uploadSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('upload')">
               <label class="flex items-center gap-1 text-xs text-gray-700 cursor-pointer">
-                <input type="checkbox" id="uploadOnlyNew" class="w-4 h-4" onchange="renderUploadPickList()">
+                <input type="checkbox" id="uploadOnlyNew" class="w-4 h-4" onchange="resetListPage('upload')">
                 只看共用庫還沒有的
               </label>
               <span id="uploadPickCount" class="text-xs text-gray-400"></span>
             </div>
-            <div id="uploadPickList" class="max-h-52 overflow-y-auto bg-white border rounded p-2 mb-2"></div>
+            <div id="uploadTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
+            <div id="uploadPickList" class="max-h-52 overflow-y-auto bg-white border rounded p-2 mb-1"></div>
+            <div id="uploadPager" class="mb-2"></div>
             <label class="flex items-center gap-1.5 text-xs text-gray-700 mb-1 cursor-pointer">
               <input type="checkbox" id="skipExistingOnUpload" class="w-4 h-4" checked onchange="refreshUploadExistsLabel()">
               共用庫已經有的商品編號就<b>跳過</b>，不要覆蓋（取消勾選＝直接覆蓋掉共用庫的版本）
@@ -2092,6 +2093,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </div>
 
           <div id="sharedProductList" class="flex flex-wrap gap-2"></div>
+          <div id="sharePager" class="mt-2"></div>
         </div>
       </div>
 
@@ -2102,13 +2104,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <button onclick="deleteSavedProduct()" class="text-xs text-red-400 hover:text-red-600 hidden" id="deleteBtn">刪除目前商品記錄</button>
         </div>
         <div class="flex flex-wrap items-center gap-2 mb-2">
-          <input id="savedSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="renderSavedList()">
-          <select id="savedVendorFilter" class="border rounded px-2 py-1 text-xs" onchange="renderSavedList()"><option value="">全部廠商</option></select>
+          <input id="savedSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('saved')">
           <span id="savedCount" class="text-xs text-gray-400"></span>
         </div>
+        <div id="savedTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
         <div id="savedProductList" class="flex flex-wrap gap-2">
           <span class="text-gray-400 text-xs">尚無儲存記錄</span>
         </div>
+        <div id="savedPager" class="mt-2"></div>
       </div>
 
       <!-- 基本資料 -->
@@ -3429,8 +3432,97 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       renderSharedList();
     }
 
-    // 幾百筆全部畫成藥丸畫面會炸掉，超過就只畫前 N 筆並提示縮小範圍
-    const LIST_RENDER_CAP = 80;
+    // ── 分頁 ──
+    // 一頁 25 筆，剩下的用上下頁翻，而不是直接砍掉不顯示
+    const LIST_PAGE_SIZE = 25;
+    const listPage = { share: 1, saved: 1, upload: 1 };
+
+    function gotoListPage(scope, page) {
+      listPage[scope] = Math.max(1, page);
+      window[TAG_FILTER_RENDER[scope]]();
+    }
+
+    // 篩選條件一改就回第 1 頁，不然會停在一個已經不存在的頁碼上
+    function resetListPage(scope) {
+      listPage[scope] = 1;
+      window[TAG_FILTER_RENDER[scope]]();
+    }
+
+    // 回傳這一頁要顯示的項目，順便把頁碼夾在合法範圍內
+    function paginate(scope, items) {
+      const pages = Math.max(1, Math.ceil(items.length / LIST_PAGE_SIZE));
+      if (listPage[scope] > pages) listPage[scope] = pages;
+      const start = (listPage[scope] - 1) * LIST_PAGE_SIZE;
+      return { slice: items.slice(start, start + LIST_PAGE_SIZE), page: listPage[scope], pages, start };
+    }
+
+    function renderPager(boxId, scope, info, total) {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      if (info.pages <= 1) { box.innerHTML = ''; return; }
+      const btn = (label, page, disabled) => disabled
+        ? `<span class="text-xs px-2 py-1 text-gray-300">${label}</span>`
+        : `<button onclick="gotoListPage('${scope}', ${page})" class="text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:border-blue-400 hover:text-blue-600">${label}</button>`;
+      const from = info.start + 1;
+      const to = info.start + info.slice.length;
+      box.innerHTML = `<div class="flex items-center gap-1 flex-wrap">
+        ${btn('« 第一頁', 1, info.page === 1)}
+        ${btn('‹ 上一頁', info.page - 1, info.page === 1)}
+        <span class="text-xs text-gray-500 px-1">第 ${info.page} / ${info.pages} 頁　顯示 ${from}–${to}，共 ${total} 筆</span>
+        ${btn('下一頁 ›', info.page + 1, info.page === info.pages)}
+        ${btn('最後一頁 »', info.pages, info.page === info.pages)}
+      </div>`;
+    }
+
+    // ── 標籤篩選 ──
+    // 三份清單各自記住自己選了哪些標籤（多選，全部命中才顯示）
+    const tagFilterState = { share: new Set(), saved: new Set(), upload: new Set() };
+    const TAG_FILTER_RENDER = { share: 'renderSharedList', saved: 'renderSavedList', upload: 'renderUploadPickList' };
+
+    // 商品資料裡的標籤：勾選的固定標籤 + 自由輸入的（頓號／逗號／空白分隔）
+    function productTags(data) {
+      if (!data) return [];
+      if (Array.isArray(data.tags)) return data.tags;           // 共用庫摘要已經算好
+      const checked = Array.isArray(data.tagsChecked) ? data.tagsChecked.map(String) : [];
+      const custom = String(data.tagsCustom || '')
+        .split(/[、,，\s]+/).map(t => t.trim()).filter(Boolean);
+      return [...new Set([...checked, ...custom])];
+    }
+
+    function toggleTagFilter(scope, tag) {
+      const set = tagFilterState[scope];
+      set.has(tag) ? set.delete(tag) : set.add(tag);
+      resetListPage(scope);
+    }
+
+    function clearTagFilter(scope) {
+      tagFilterState[scope].clear();
+      resetListPage(scope);
+    }
+
+    // 標籤列只列出現有資料真的有的標籤，並標出各自筆數
+    function renderTagFilter(boxId, scope, items) {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      const counts = new Map();
+      items.forEach(it => productTags(it).forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
+      if (!counts.size) { box.innerHTML = ''; return; }
+      const sel = tagFilterState[scope];
+      const tags = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b, 'zh-Hant'));
+      box.innerHTML = tags.map(t => `<button onclick="toggleTagFilter('${scope}', ${JSON.stringify(t).replace(/"/g, '&quot;')})"
+          class="text-xs px-2 py-0.5 rounded-full border transition-colors ${sel.has(t)
+            ? 'bg-indigo-600 text-white border-indigo-600'
+            : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'}">${t}<span class="opacity-60 ml-1">${counts.get(t)}</span></button>`).join('')
+        + (sel.size ? `<button onclick="clearTagFilter('${scope}')" class="text-xs text-gray-400 hover:text-gray-600 underline ml-1">清除標籤</button>` : '');
+    }
+
+    // 多選標籤採 AND：選愈多範圍愈窄，符合「拿來縮小範圍」的直覺
+    function passTagFilter(scope, data) {
+      const sel = tagFilterState[scope];
+      if (!sel.size) return true;
+      const tags = productTags(data);
+      return [...sel].every(t => tags.includes(t));
+    }
 
     // 關鍵字可用空白分隔，全部命中才算（AND），跟蝦皮分類搜尋一致
     function matchKeywords(haystack, kw) {
@@ -3439,42 +3531,29 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       return kw.toLowerCase().split(/\s+/).filter(Boolean).every(t => hay.includes(t));
     }
 
-    // 依現有資料重建下拉選項，保留使用者目前的選擇
-    function fillFilterOptions(selectId, values, allLabel) {
-      const el = document.getElementById(selectId);
-      if (!el) return;
-      const keep = el.value;
-      const opts = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-      el.innerHTML = `<option value="">${allLabel}</option>` +
-        opts.map(v => `<option value="${v}">${v}</option>`).join('');
-      el.value = opts.includes(keep) ? keep : '';
-    }
-
     function renderSharedList() {
       const box = document.getElementById('sharedProductList');
       const kw = (document.getElementById('shareSearch').value || '').trim();
-      fillFilterOptions('shareVendorFilter', sharedList.map(it => it.vendor), '全部廠商');
-      fillFilterOptions('shareUserFilter', sharedList.map(it => it.updatedBy), '全部修改者');
-      const vf = document.getElementById('shareVendorFilter').value;
-      const uf = document.getElementById('shareUserFilter').value;
+      renderTagFilter('shareTagFilter', 'share', sharedList);
+      // 舊資料的摘要沒有 tags 欄位，標籤篩選會漏掉它們——有就把補齊按鈕露出來
+      const needRebuild = sharedList.some(it => !Array.isArray(it.tags));
+      document.getElementById('rebuildTagsBtn').classList.toggle('hidden', !needRebuild);
 
       const shown = sharedList.filter(it =>
-        (!vf || it.vendor === vf) && (!uf || it.updatedBy === uf) &&
-        matchKeywords(`${it.code} ${it.name || ''} ${it.vendor || ''} ${it.updatedBy || ''}`, kw));
+        passTagFilter('share', it) &&
+        matchKeywords(`${it.code} ${it.name || ''} ${it.vendor || ''} ${it.updatedBy || ''} ${productTags(it).join(' ')}`, kw));
 
-      const filtering = kw || vf || uf;
-      const capped = shown.slice(0, LIST_RENDER_CAP);
+      const filtering = kw || tagFilterState.share.size;
+      const info = paginate('share', shown);
       document.getElementById('shareCount').textContent =
-        sharedList.length
-          ? `共 ${sharedList.length} 筆${filtering ? `，符合 ${shown.length} 筆` : ''}` +
-            (shown.length > capped.length ? `，只顯示前 ${capped.length} 筆，請再縮小範圍` : '')
-          : '';
+        sharedList.length ? `共 ${sharedList.length} 筆${filtering ? `，符合 ${shown.length} 筆` : ''}` : '';
 
-      if (!sharedList.length) { box.innerHTML = '<span class="text-gray-400 text-xs">共用庫還沒有商品</span>'; return; }
-      if (!shown.length)      { box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; return; }
+      if (!sharedList.length) { box.innerHTML = '<span class="text-gray-400 text-xs">共用庫還沒有商品</span>'; renderPager('sharePager','share',{pages:1},0); return; }
+      if (!shown.length)      { box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; renderPager('sharePager','share',{pages:1},0); return; }
+      renderPager('sharePager', 'share', info, shown.length);
 
       const currentCode = pVal('p_code');
-      box.innerHTML = capped.map(it => {
+      box.innerHTML = info.slice.map(it => {
         const active = it.code === currentCode;
         const when = (it.updatedAt || '').slice(0, 16).replace('T', ' ');
         const delBtn = `<button onclick="deleteSharedProduct('${it.code}')"
@@ -3491,6 +3570,22 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           </button>${delBtn}
         </span>`;
       }).join('');
+    }
+
+    // 摘要清單後來才加 tags 欄位，舊資料沒有。這支請 worker 依完整資料重算一次。
+    async function rebuildSharedTags() {
+      const missing = sharedList.filter(it => !Array.isArray(it.tags)).length;
+      if (!confirm(`共用庫有 ${missing} 筆的摘要沒有標籤資料，會漏出標籤篩選。\n要重建索引嗎？（只動摘要清單，不改商品內容）`)) return;
+      setShareStatus('重建中…');
+      const { ok, status, data } = await shareApi('/api/products/rebuild-list', { method: 'POST' });
+      if (!ok) {
+        setShareStatus('');
+        alert('重建失敗：' + (data.error || status) + (status === 404 ? '\n（worker 可能還沒部署到最新版）' : ''));
+        return;
+      }
+      await refreshSharedList();
+      alert(`重建完成，共 ${data.count} 筆`
+        + (data.missing && data.missing.length ? `\n有 ${data.missing.length} 筆在清單上但讀不到完整資料，已移除：${data.missing.join('、')}` : ''));
     }
 
     async function deleteSharedProduct(code) {
@@ -3514,6 +3609,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const codes = Object.keys(db);
       if (!codes.length) { alert('本機沒有商品資料'); return; }
       uploadPickSelected = new Set(codes);
+      tagFilterState.upload.clear();
       document.getElementById('uploadSearch').value = '';
       document.getElementById('uploadOnlyNew').checked = false;
       document.getElementById('removeLocalAfterUpload').checked = false;
@@ -3526,28 +3622,31 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     function uploadPickVisibleCodes() {
       const db = getDB();
       const kw = (document.getElementById('uploadSearch').value || '').trim();
-      const vf = document.getElementById('uploadVendorFilter').value;
       const onlyNew = document.getElementById('uploadOnlyNew').checked;
       return Object.keys(db).filter(code =>
-        (!vf || db[code].vendor === vf) &&
+        passTagFilter('upload', db[code]) &&
         (!onlyNew || !sharedList.some(x => x.code === code)) &&
-        matchKeywords(`${code} ${db[code].name || ''} ${db[code].vendor || ''}`, kw));
+        matchKeywords(`${code} ${db[code].name || ''} ${db[code].vendor || ''} ${productTags(db[code]).join(' ')}`, kw));
     }
 
     function renderUploadPickList() {
       const db = getDB();
-      fillFilterOptions('uploadVendorFilter', Object.keys(db).map(k => db[k].vendor), '全部廠商');
+      renderTagFilter('uploadTagFilter', 'upload', Object.keys(db).map(k => db[k]));
       const visible = uploadPickVisibleCodes();
-      const capped = visible.slice(0, LIST_RENDER_CAP);
+      const info = paginate('upload', visible);
 
       document.getElementById('uploadPickCount').textContent =
         `已勾選 ${uploadPickSelected.size} 筆／本機共 ${Object.keys(db).length} 筆` +
-        (visible.length !== Object.keys(db).length ? `，符合 ${visible.length} 筆` : '') +
-        (visible.length > capped.length ? `，只顯示前 ${capped.length} 筆` : '');
+        (visible.length !== Object.keys(db).length ? `，符合 ${visible.length} 筆` : '');
 
       const box = document.getElementById('uploadPickList');
-      if (!visible.length) { box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; return; }
-      box.innerHTML = capped.map(code => {
+      if (!visible.length) {
+        box.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>';
+        renderPager('uploadPager', 'upload', { pages: 1 }, 0);
+        return;
+      }
+      renderPager('uploadPager', 'upload', info, visible.length);
+      box.innerHTML = info.slice.map(code => {
         const inShared = sharedList.some(x => x.code === code);
         return `<label class="flex items-center gap-2 text-xs py-1 cursor-pointer hover:bg-gray-50">
           <input type="checkbox" class="upload-pick w-4 h-4" value="${code}" ${uploadPickSelected.has(code) ? 'checked' : ''}
@@ -3583,7 +3682,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       document.getElementById('uploadPicker').classList.add('hidden');
     }
 
-    // 「全選」只作用在目前篩選看得到的，不然搜尋等於白做
+    // 「全選」作用在整個篩選結果（跨頁），不是只有當頁，不然搜尋等於白做
     function toggleAllUploadPick(on) {
       if (on) uploadPickVisibleCodes().forEach(c => uploadPickSelected.add(c));
       else uploadPickSelected.clear();
@@ -3728,21 +3827,24 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       deleteBtn.classList.toggle('hidden', !currentCode || !db[currentCode]);
 
       const kw = (document.getElementById('savedSearch').value || '').trim();
-      fillFilterOptions('savedVendorFilter', keys.map(k => db[k].vendor), '全部廠商');
-      const vf = document.getElementById('savedVendorFilter').value;
+      renderTagFilter('savedTagFilter', 'saved', keys.map(k => db[k]));
       const shown = keys.filter(k =>
-        (!vf || db[k].vendor === vf) &&
-        matchKeywords(`${k} ${db[k].name || ''} ${db[k].vendor || ''}`, kw));
-      const capped = shown.slice(0, LIST_RENDER_CAP);
+        passTagFilter('saved', db[k]) &&
+        matchKeywords(`${k} ${db[k].name || ''} ${db[k].vendor || ''} ${productTags(db[k]).join(' ')}`, kw));
+      const info = paginate('saved', shown);
 
       if (countEl) {
         countEl.textContent = `共 ${keys.length} 筆` +
-          ((kw || vf) ? `，符合 ${shown.length} 筆` : '') +
-          (shown.length > capped.length ? `，只顯示前 ${capped.length} 筆，請再縮小範圍` : '');
+          ((kw || tagFilterState.saved.size) ? `，符合 ${shown.length} 筆` : '');
       }
-      if (!shown.length) { container.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>'; return; }
+      if (!shown.length) {
+        container.innerHTML = '<span class="text-gray-400 text-xs">找不到符合的商品</span>';
+        renderPager('savedPager', 'saved', { pages: 1 }, 0);
+        return;
+      }
+      renderPager('savedPager', 'saved', info, shown.length);
 
-      container.innerHTML = capped.map(k => {
+      container.innerHTML = info.slice.map(k => {
         const item = db[k];
         const isActive = k === currentCode;
         return `<button data-load-key="${k}"
