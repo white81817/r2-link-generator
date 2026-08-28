@@ -2105,6 +2105,14 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <button onclick="rebuildIndexNow()" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 rounded px-3 py-1" title="重算清單索引與品項索引。索引平常會自動維護，這裡是手動補救用的">🔧 重建索引</button>
             <button onclick="analyzeCodePatterns()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="看共用庫裡的商品編號有幾種寫法">🔢 檢查編號規則</button>
             <button onclick="cleanLegacyComboVariants()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="舊版把複合商品塞在商品的規格列裡。已經跑過就不用再跑">🧹 清理舊複合規格</button>
+            <label class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1 cursor-pointer" title="從 USALE 匯出的商品資料整批匯入共用庫。平常不需要，資料要重灌時才用">
+              ⬆ 匯入 USALE 商品資料
+              <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importUsaleProducts(event)">
+            </label>
+            <label class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1 cursor-pointer" title="從 USALE 匯出的複合商品資料整批匯入。平常不需要，資料要重灌時才用">
+              ⬆ 匯入複合商品
+              <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importCompositeProducts(event)">
+            </label>
           </div>
           <div id="shareTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
 
@@ -2475,14 +2483,6 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         <button onclick="clearProductForm()" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium">
           清除全部
         </button>
-        <label class="bg-purple-100 hover:bg-purple-200 text-purple-800 px-4 py-2 rounded-lg font-medium cursor-pointer self-center text-sm" title="匯入 USALE 匯出的商品資料，依商品編號歸群為商品與規格">
-          ⬆ 匯入 USALE 商品資料
-          <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importUsaleProducts(event)">
-        </label>
-        <label class="bg-indigo-100 hover:bg-indigo-200 text-indigo-800 px-4 py-2 rounded-lg font-medium cursor-pointer self-center text-sm" title="匯入 USALE 的複合商品資料，掛成對應商品的複合規格">
-          ⬆ 匯入複合商品
-          <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importCompositeProducts(event)">
-        </label>
         <span id="saveStatus" class="self-center text-sm text-gray-500"></span>
       </div>
 
@@ -2998,6 +2998,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         bc.value = '';
         bc.dataset.manual = '1';
         bc.placeholder = '選好成員後自動產生';
+      } else if (isCombo) {
+        tr.querySelector('.v-barcode').placeholder = '';
       }
       ['.v-wholesale', '.v-weight'].forEach(sel => {
         const el = tr.querySelector(sel);
@@ -3087,8 +3089,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           shopeeSell: c.shopeeSell || '',
           barcode: c.id,
           barcodeManual: true,
-        }, { noauto: true });
-        tr.dataset.comboRef = c.id;
+        }, { noauto: true, comboRef: c.id });
         const btn = tr.querySelector('.v-combo-btn');
         btn.textContent = '編輯';
         btn.onclick = () => { switchTab('combo'); initComboTab(); editCombo(c.id); };
@@ -3476,6 +3477,9 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       tbody.appendChild(tr);
       // 載入／匯入進來的列要在 autoBarcode 之前就鎖住，否則條碼會先被覆蓋掉才鎖
       if (opts && opts.noauto) tr.dataset.noauto = '1';
+      // comboRef 同理：onVariantKindChange 會把「還沒有編號」的複合列條碼清空，
+      // 設在 addVariantRow 回傳之後就太晚了，已經有編號的會被清掉。
+      if (opts && opts.comboRef) tr.dataset.comboRef = opts.comboRef;
       if (d.combo) writeRowCombo(tr, d.combo);
       onVariantKindChange(tr);
       autoBarcode(tr);
@@ -4507,8 +4511,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         combo: { comboId: c.id, members: c.members || [] },
         sell: c.sell || '', shopeeSell: c.shopeeSell || '',
         barcode: c.id, barcodeManual: true,
-      }, { noauto: true });
-      tr.dataset.comboRef = c.id;
+      }, { noauto: true, comboRef: c.id });
       const btn = tr.querySelector('.v-combo-btn');
       btn.textContent = '編輯';
       btn.onclick = () => { switchTab('combo'); initComboTab(); editCombo(c.id); };
