@@ -2931,20 +2931,29 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       }
       if (!comboList.length) return;
 
-      // 摘要沒有成員明細，要逐一取回完整資料才知道成員是誰
-      const ids = comboList.map(x => x.id);
+      // 摘要裡的 memberKeys 就能篩出相關的，只有這幾筆才需要取完整資料。
+      // 舊版摘要沒有這個欄位，偵測到就先重建一次。
+      if (comboList.some(x => !Array.isArray(x.memberKeys)) && !comboListRebuilt) {
+        comboListRebuilt = true;
+        const r = await shareApi('/api/combos/rebuild-list', { method: 'POST', timeout: 120000 });
+        if (r.ok) {
+          const again = await shareApi('/api/combos');
+          if (again.ok) comboList = again.data.list || [];
+        }
+      }
+
+      const relatedIds = comboList
+        .filter(x => (x.memberKeys || []).some(k => barcodes.has(k) || k === code))
+        .map(x => x.id);
+      if (!relatedIds.length) return;
+
       const related = [];
-      for (let i = 0; i < ids.length; i += 20) {
-        const part = await Promise.all(ids.slice(i, i + 20).map(async (id) => {
+      for (let i = 0; i < relatedIds.length; i += 20) {
+        const part = await Promise.all(relatedIds.slice(i, i + 20).map(async (id) => {
           const { ok, data } = await shareApi(`/api/combos/${encodeURIComponent(id)}`);
           return ok ? data.combo : null;
         }));
-        part.filter(Boolean).forEach(c => {
-          const hit = (c.members || []).some(m =>
-            barcodes.has(String(m.barcode || '').trim().toUpperCase()) ||
-            String(m.code || '').trim().toUpperCase() === code);
-          if (hit) related.push(c);
-        });
+        related.push(...part.filter(Boolean));
       }
 
       related.forEach(c => {
@@ -2968,6 +2977,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     }
 
     // ── 成員檢視視窗（產品建立分頁上的複合規格用，唯讀）──
+    let comboListRebuilt = false;
     let comboEditorRow = null;
 
     function openComboEditor(tr) {

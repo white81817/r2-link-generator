@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-28-combos-v2',
+  version: '2026-08-28-combos-v3',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -895,16 +895,40 @@ app.post('/api/products/rebuild-list', async (c) => {
 const COMBO_CODE_RE = /^BD([01]S)(\d{6})$/;
 
 function comboSummary(id, c) {
+  const members = (c && c.members) || [];
   return {
     id,
     name: String((c && c.name) || ''),
     sell: (c && c.sell) || '',
-    memberCount: ((c && c.members) || []).length,
-    qtyTotal: ((c && c.members) || []).reduce((n, m) => n + (Number(m.qty) || 1), 0),
+    memberCount: members.length,
+    qtyTotal: members.reduce((n, m) => n + (Number(m.qty) || 1), 0),
+    // 成員的鍵值也放進摘要：產品建立要判斷「這個商品跟哪些複合有關」，
+    // 沒有這個就得把每一筆複合商品的完整資料都抓下來（676 筆要跑好幾秒）。
+    memberKeys: members.map(m => String(m.barcode || m.code || '').toUpperCase()).filter(Boolean),
     updatedAt: (c && c.updatedAt) || '',
     updatedBy: (c && c.updatedBy) || '',
   };
 }
+
+// POST /api/combos/rebuild-list — 依 combo:<id> 重算摘要（摘要後來才加 memberKeys）
+app.post('/api/combos/rebuild-list', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  const listRaw = await c.env.CACHE.get('combo:list');
+  const list = listRaw ? JSON.parse(listRaw) : [];
+  const rebuilt = [];
+  const CHUNK = 20;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const part = await Promise.all(list.slice(i, i + CHUNK).map(async (it) => {
+      const raw = await c.env.CACHE.get(`combo:${it.id}`);
+      // 讀不到完整資料就保留原摘要，直接丟掉等於偷偷刪資料
+      if (!raw) return { ...it, memberKeys: Array.isArray(it.memberKeys) ? it.memberKeys : [] };
+      return comboSummary(it.id, JSON.parse(raw));
+    }));
+    rebuilt.push(...part);
+  }
+  await c.env.CACHE.put('combo:list', JSON.stringify(rebuilt));
+  return c.json({ ok: true, count: rebuilt.length });
+});
 
 app.get('/api/combos', async (c) => {
   if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
