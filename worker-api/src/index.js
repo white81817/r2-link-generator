@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-28-combos-v3',
+  version: '2026-08-28-combos-v4',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
   timestamp: new Date().toISOString(),
 }));
@@ -642,6 +642,8 @@ function productItemEntries(code, data) {
     // 1688 採購與複合商品都靠這份索引，料號與已比對的 SKU 也要帶著
     vendorCode: String(v.vendorCode || ''),
     sku1688: v.sku1688 || null,
+    // 複合商品的成本要依「每個成員自己的廠商標籤」換匯，所以標籤也得跟著
+    tags: productTags(data),
     idx: i + 1,
   }));
 }
