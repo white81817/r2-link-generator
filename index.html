@@ -2791,23 +2791,36 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // 一眼看出實際上有幾種編號寫法、不合規的是哪一類。
     function analyzeCodePatterns() {
       if (!sharedList.length) { alert('共用庫還沒有商品，先匯入或上傳資料'); return; }
-      // 只看「形狀」會把「材積代碼不對」和「尾數不是 00」混成同一群，
-      // 這兩者要怎麼處理完全不同，所以先判原因再分群。
+
+      // 這裡要跟 worker 的基準判定用同一把尺（不要求尾數 00），
+      // 否則畫面數字跟匯入時回報的「符合規則 N 個」對不起來。
+      // 尾數不是 00 是另一回事：它照樣進基準，只是自動編條碼時不會處理，
+      // 所以獨立列出來當資料品質提醒，不算進「沒納入基準」。
+      const BASE_RE = /^(SH|CF)([01]S)(\d{4})(\d{2})?$/;
+
       const reasonOf = (code) => {
         if (!code) return '空白';
-        const m = /^([A-Z]{2})([0-9A-Z]S)(\d{4})(\d{2})$/.exec(code);
+        const m = /^([A-Z]{2})([0-9A-Z]S)(\d{4})(\d{0,2})$/.exec(code);
         if (!m) return `格式完全不同（${code.replace(/\d/g, '#')}）`;
         if (!['SH', 'CF'].includes(m[1])) return `倉庫代碼是 ${m[1]}，不是 SH／CF`;
         if (!['0S', '1S'].includes(m[2])) return `材積代碼是 ${m[2]}，不是 0S／1S`;
-        if (m[4] !== '00') return `尾數是 ${m[4]}，不是 00`;
         return '其他';
       };
 
       const groups = new Map();
-      let okCount = 0;
+      const badTail = { n: 0, samples: [] };
+      let inBase = 0;
       sharedList.forEach(it => {
         const code = String(it.code || '').trim().toUpperCase();
-        if (parseProductCode(code)) { okCount++; return; }
+        const m = BASE_RE.exec(code);
+        if (m) {
+          inBase++;
+          if ((m[4] || '') !== '00') {
+            badTail.n++;
+            if (badTail.samples.length < 3) badTail.samples.push(it.code);
+          }
+          return;
+        }
         const reason = reasonOf(code);
         if (!groups.has(reason)) groups.set(reason, { n: 0, samples: [] });
         const g = groups.get(reason);
@@ -2820,13 +2833,22 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         .map(([reason, g]) => `  ${g.n} 筆　${reason}\n      例：${g.samples.join('、')}`)
         .join('\n');
       const rest = rows.length > 20 ? `\n  …另有 ${rows.length - 20} 種情形` : '';
-      const bad = rows.reduce((n, r) => n + r[1].n, 0);
+      const outside = rows.reduce((n, r) => n + r[1].n, 0);
 
       alert(`共用庫共 ${sharedList.length} 筆商品編號\n`
-        + `  符合規則（SH/CF + 0S/1S + 四位數 + 00）：${okCount} 筆\n`
-        + `  不符合：${bad} 筆，共 ${rows.length} 種情形\n\n`
-        + `不符合的原因（# 代表數字）：\n${shown}${rest}\n\n`
-        + `不合規的編號不會納入流水號基準，之後自動發號時不會考慮它們。`);
+        + `  有納入流水號基準：${inBase} 筆\n`
+        + `  沒納入：${outside} 筆，共 ${rows.length} 種情形\n\n`
+        + (rows.length
+            ? `沒納入基準的原因（# 代表數字）：\n${shown}${rest}\n\n`
+              + `這些編號的形狀跟自動發號的 SH／CF + 0S／1S 完全不重疊，`
+              + `不會跟新編號撞到，可以放著不管。\n`
+              + `只有在「倉庫代碼」或「材積代碼」出現你們實際還在用的值時，`
+              + `才需要把規則補上去。\n`
+            : '所有編號都已納入基準。\n')
+        + (badTail.n
+            ? `\n另外有 ${badTail.n} 筆已納入基準、但尾數不是 00：\n      例：${badTail.samples.join('、')}\n`
+              + `這不影響發號，但這些商品不會自動編品項條碼，值得確認是不是把品項條碼存成商品編號了。`
+            : ''));
     }
 
     // 選好倉庫＋材積就先把「這個前綴用到幾號」秀出來，
