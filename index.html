@@ -2050,6 +2050,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           <div class="flex flex-wrap items-center gap-2 mb-2">
             <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('share')">
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
+            <button onclick="analyzeCodePatterns()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="看共用庫裡的商品編號有幾種寫法、哪些不符合 SH/CF + 0S/1S + 四位數 + 00 的規則">🔢 檢查編號規則</button>
             <button onclick="openUploadPicker()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
             <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded px-3 py-1 hidden font-medium" title="商品本身有標籤，只是共用庫的清單索引沒存到，用標籤篩選時會漏掉它們。按一次會從商品讀回來補進索引，不會改到商品內容"></button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
@@ -2784,6 +2785,48 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       if (seq > 99) return;
       barcodeEl.value = parsed.prefix + parsed.serial + String(seq).padStart(2, '0');
       calcVariant(row);
+    }
+
+    // 把共用庫裡的商品編號依「形狀」分群（數字換成 #），
+    // 一眼看出實際上有幾種編號寫法、不合規的是哪一類。
+    function analyzeCodePatterns() {
+      if (!sharedList.length) { alert('共用庫還沒有商品，先匯入或上傳資料'); return; }
+      // 只看「形狀」會把「材積代碼不對」和「尾數不是 00」混成同一群，
+      // 這兩者要怎麼處理完全不同，所以先判原因再分群。
+      const reasonOf = (code) => {
+        if (!code) return '空白';
+        const m = /^([A-Z]{2})([0-9A-Z]S)(\d{4})(\d{2})$/.exec(code);
+        if (!m) return `格式完全不同（${code.replace(/\d/g, '#')}）`;
+        if (!['SH', 'CF'].includes(m[1])) return `倉庫代碼是 ${m[1]}，不是 SH／CF`;
+        if (!['0S', '1S'].includes(m[2])) return `材積代碼是 ${m[2]}，不是 0S／1S`;
+        if (m[4] !== '00') return `尾數是 ${m[4]}，不是 00`;
+        return '其他';
+      };
+
+      const groups = new Map();
+      let okCount = 0;
+      sharedList.forEach(it => {
+        const code = String(it.code || '').trim().toUpperCase();
+        if (parseProductCode(code)) { okCount++; return; }
+        const reason = reasonOf(code);
+        if (!groups.has(reason)) groups.set(reason, { n: 0, samples: [] });
+        const g = groups.get(reason);
+        g.n++;
+        if (g.samples.length < 3) g.samples.push(it.code);
+      });
+
+      const rows = [...groups.entries()].sort((a, b) => b[1].n - a[1].n);
+      const shown = rows.slice(0, 20)
+        .map(([reason, g]) => `  ${g.n} 筆　${reason}\n      例：${g.samples.join('、')}`)
+        .join('\n');
+      const rest = rows.length > 20 ? `\n  …另有 ${rows.length - 20} 種情形` : '';
+      const bad = rows.reduce((n, r) => n + r[1].n, 0);
+
+      alert(`共用庫共 ${sharedList.length} 筆商品編號\n`
+        + `  符合規則（SH/CF + 0S/1S + 四位數 + 00）：${okCount} 筆\n`
+        + `  不符合：${bad} 筆，共 ${rows.length} 種情形\n\n`
+        + `不符合的原因（# 代表數字）：\n${shown}${rest}\n\n`
+        + `不合規的編號不會納入流水號基準，之後自動發號時不會考慮它們。`);
     }
 
     // 選好倉庫＋材積就先把「這個前綴用到幾號」秀出來，
