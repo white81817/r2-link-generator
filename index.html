@@ -2051,7 +2051,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <input id="shareSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('share')">
             <button onclick="refreshSharedList()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1">🔄 重新整理</button>
             <button onclick="openUploadPicker()" class="text-xs bg-amber-100 hover:bg-amber-200 rounded px-3 py-1">⬆ 上傳本機資料</button>
-            <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded px-3 py-1 hidden font-medium" title="商品本身有標籤，只是共用庫的清單索引沒存到。按一次會從商品讀回來補進索引，不會改到商品內容">🏷 按這裡補上標籤，才能用標籤篩選</button>
+            <button onclick="rebuildSharedTags()" id="rebuildTagsBtn" class="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded px-3 py-1 hidden font-medium" title="商品本身有標籤，只是共用庫的清單索引沒存到，用標籤篩選時會漏掉它們。按一次會從商品讀回來補進索引，不會改到商品內容"></button>
             <button onclick="shareLogout()" class="text-xs text-gray-400 hover:text-gray-600">中斷連線</button>
             <span id="shareCount" class="text-xs text-gray-400"></span>
           </div>
@@ -2110,6 +2110,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         </div>
         <div class="flex flex-wrap items-center gap-2 mb-2">
           <input id="savedSearch" type="text" class="border rounded px-2 py-1 text-xs w-52" placeholder="🔍 搜尋商品編號或名稱" oninput="resetListPage('saved')">
+          <button onclick="deleteSavedFiltered()" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded px-3 py-1" title="刪除目前搜尋／標籤篩選出來的所有本機記錄">🗑 刪除篩選結果</button>
           <span id="savedCount" class="text-xs text-gray-400"></span>
         </div>
         <div id="savedTagFilter" class="flex flex-wrap gap-1 mb-2"></div>
@@ -3554,13 +3555,16 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       const kw = (document.getElementById('shareSearch').value || '').trim();
       renderTagFilter('shareTagFilter', 'share', sharedList);
       // 舊資料的摘要沒有 tags 欄位，標籤篩選會漏掉它們——有就把補齊按鈕露出來
-      const needRebuild = sharedList.some(it => !Array.isArray(it.tags));
-      document.getElementById('rebuildTagsBtn').classList.toggle('hidden', !needRebuild);
-      // 標籤列還是空的時候要說清楚原因，不然使用者只會覺得「怎麼沒有標籤可以選」
+      // 標籤篩選讀的是輕量索引，索引裡沒有標籤的那幾筆會被篩選漏掉。
+      // 這裡直接把「有幾筆會被漏掉」寫在按鈕上，比說「重建索引」清楚得多。
+      const stale = sharedList.filter(it => !Array.isArray(it.tags)).length;
+      const rebuildBtn = document.getElementById('rebuildTagsBtn');
+      rebuildBtn.classList.toggle('hidden', !stale);
+      rebuildBtn.textContent = `🏷 有 ${stale} 筆用標籤篩不到，點我補齊`;
       const tagBox = document.getElementById('shareTagFilter');
-      if (needRebuild && tagBox && !tagBox.innerHTML) {
-        tagBox.innerHTML = '<span class="text-xs text-gray-400">商品本身有標籤，但共用庫的「清單索引」沒有存到，所以這裡篩不了。'
-          + '按上面的〔🏷 補上標籤〕會從商品讀回來補進索引。</span>';
+      if (stale && tagBox) {
+        tagBox.innerHTML += `<span class="text-xs text-orange-600 ml-1">⚠ 另有 ${stale} 筆的標籤還沒進索引，`
+          + `用標籤篩選時會漏掉它們（商品本身的標籤是好的，只是索引沒存到）。</span>`;
       }
 
       const shown = sharedList.filter(it =>
@@ -3599,10 +3603,12 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
     // 摘要清單後來才加 tags 欄位，舊資料沒有。這支請 worker 依完整資料重算一次。
     async function rebuildSharedTags() {
       const missing = sharedList.filter(it => !Array.isArray(it.tags)).length;
-      if (!confirm(`商品本身有標籤，但共用庫的清單索引是在加入標籤功能之前建的，`
-                 + `其中 ${missing} 筆的索引沒存到標籤，所以篩選列是空的。\n\n`
-                 + `按確定會請伺服器讀回每筆商品的完整資料、把標籤補進索引，`
-                 + `補完就能跟本機清單一樣用標籤篩選。\n只動索引，不會改到任何商品內容。`)) return;
+      if (!confirm(`共用庫的標籤篩選讀的是一份輕量索引（只有編號／名稱／廠商／標籤），`
+                 + `不是每次都把幾百筆完整資料抓下來。\n\n`
+                 + `目前有 ${missing} 筆是在加入標籤功能之前存的，索引裡沒有標籤，`
+                 + `所以你用標籤篩選時這 ${missing} 筆會被漏掉——它們商品本身的標籤是好的。\n\n`
+                 + `按確定會請伺服器讀回這些商品的完整資料、把標籤補進索引。`
+                 + `只動索引，不會改到任何商品內容或修改時間。`)) return;
       setShareStatus('重建中…');
       const { ok, status, data } = await shareApi('/api/products/rebuild-list', { method: 'POST' });
       if (!ok) {
@@ -3904,25 +3910,56 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       container.innerHTML = info.slice.map(k => {
         const item = db[k];
         const isActive = k === currentCode;
-        return `<button data-load-key="${k}"
-          class="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition-colors ${isActive
+        return `<span class="inline-flex items-stretch text-xs rounded-full border overflow-hidden transition-colors ${isActive
             ? 'bg-blue-500 text-white border-blue-500'
-            : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:text-blue-600'}">
-          <span class="font-mono">${item.code}</span>
-          <span class="text-opacity-75">${item.name || ''}</span>
-        </button>`;
+            : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}">
+          <button data-load-key="${k}" class="flex items-center gap-1 px-3 py-1.5">
+            <span class="font-mono">${item.code}</span>
+            <span class="text-opacity-75">${item.name || ''}</span>
+          </button>
+          <button onclick="deleteSavedProduct('${k}')"
+            class="px-1.5 border-l ${isActive ? 'border-white/40 hover:bg-white/20' : 'border-gray-300 hover:bg-red-50 hover:text-red-600'}"
+            title="從本機刪除這筆記錄">×</button>
+        </span>`;
       }).join('');
     }
 
-    function deleteSavedProduct() {
-      const code = pVal('p_code');
-      if (!code) return;
+    // 不帶參數＝刪除目前正在編輯的（頂上那顆按鈕）；帶編號＝刪除清單上點到的那筆
+    function deleteSavedProduct(code) {
+      const target = code || pVal('p_code');
+      if (!target) return;
       const db = getDB();
-      if (!db[code]) return;
-      if (!confirm(`確定刪除商品「${code} ${db[code].name || ''}」的儲存記錄？`)) return;
-      delete db[code];
+      if (!db[target]) return;
+      const inShared = sharedList.some(x => x.code === target);
+      if (!confirm(`確定刪除商品「${target} ${db[target].name || ''}」的本機儲存記錄？`
+                 + (inShared ? '\n\n（共用庫也有這一筆，共用庫的不會被刪掉）' : '\n\n⚠ 共用庫沒有這一筆，刪掉就沒有備份了。'))) return;
+      delete db[target];
       setDB(db);
       renderSavedList();
+    }
+
+    // 批次刪除目前篩選出來的，通常用在「已經上傳到共用庫，本機可以清掉」
+    function deleteSavedFiltered() {
+      const db = getDB();
+      const kw = (document.getElementById('savedSearch').value || '').trim();
+      const shown = Object.keys(db).filter(k =>
+        passTagFilter('saved', db[k]) &&
+        matchKeywords(`${k} ${db[k].name || ''} ${db[k].vendor || ''} ${productTags(db[k]).join(' ')}`, kw));
+      if (!shown.length) { alert('目前沒有符合的商品'); return; }
+
+      const notInShared = shown.filter(k => !sharedList.some(x => x.code === k));
+      if (!confirm(`要從本機刪除目前篩選出的 ${shown.length} 筆嗎？`
+                 + (notInShared.length
+                     ? `\n\n⚠ 其中 ${notInShared.length} 筆共用庫沒有，刪掉就沒有備份了：\n${notInShared.slice(0, 15).join('、')}${notInShared.length > 15 ? '…' : ''}`
+                     : '\n\n這些共用庫都有，共用庫的不會被刪掉。')
+                 + '\n\n此操作無法復原。')) return;
+      // 筆數多時再確認一次，避免手滑把整份本機資料清掉
+      if (shown.length > 20 && !confirm(`再確認一次：真的要刪掉 ${shown.length} 筆本機記錄嗎？`)) return;
+
+      shown.forEach(k => { delete db[k]; });
+      setDB(db);
+      renderSavedList();
+      alert(`已從本機刪除 ${shown.length} 筆`);
     }
 
     function loadProduct(code) {
