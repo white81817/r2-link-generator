@@ -231,7 +231,11 @@
       #tab-link button { width: 100%; max-width: 600px; margin: 0 auto; }
     }
   
-    /* Tailwind 2.2.19 的預設調色盤沒有 orange/amber/teal/sky/emerald，
+    .bg-slate-100{background-color:#f1f5f9}
+    .hover\:bg-slate-100:hover{background-color:#f1f5f9}
+    .bg-slate-50{background-color:#f8fafc}
+    .hover\:bg-slate-50:hover{background-color:#f8fafc}
+    /* Tailwind 2.2.19 的預設調色盤沒有 orange/amber/teal/sky/emerald/slate，
        這裡依 Tailwind v2 的色值補齊實際用到的。缺定義時背景會是透明的，
        白字按鈕就整顆看不見——加新顏色前務必先確認這裡有沒有。 */
     .bg-amber-100{background-color:#fef3c7}
@@ -2425,6 +2429,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
                 <th class="border px-2 py-2 text-right bg-orange-100">蝦皮售價<br><span class="font-normal text-gray-400">手填</span></th>
                 <th class="border px-2 py-2 text-right bg-orange-50">蝦皮毛利率<br><span class="font-normal text-gray-400 whitespace-normal">需🟢，29%以上</span></th>
                 <th class="border px-2 py-2 text-left bg-teal-50">規格圖<br><span class="font-normal text-gray-400 whitespace-normal">蝦皮須全填或全不填</span></th>
+                <th class="border px-2 py-2 text-right whitespace-nowrap bg-slate-100">USALE<br><span class="font-normal text-gray-400">可用庫存</span></th>
+                <th class="border px-2 py-2 text-left whitespace-nowrap bg-slate-100">USALE<br><span class="font-normal text-gray-400">銷售模式</span></th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">現貨庫存</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">預購數量</th>
                 <th class="border px-2 py-2 text-right whitespace-nowrap">安全庫存</th>
@@ -2888,6 +2894,7 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
               style: e.style, size: e.size, wholesale: e.wholesale, weight: e.weight,
               barcode: e.barcode, vendorCode: e.vendorCode || '', sku1688: e.sku1688 || null,
               tags: e.tags || [],
+              usaleStock: e.usaleStock ?? null, usaleSalesMode: e.usaleSalesMode || '',
             },
             from: '共用庫',
           };
@@ -2938,6 +2945,30 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
       };
     }
 
+    // 成員只要有一個賣不出去，整個組合就出不了貨——這比成本更該提醒。
+    // 依 ERP 同步回來的實況判斷：售完／下架，或可用庫存為 0。
+    function comboMemberIssue(variant) {
+      if (!variant) return '';
+      const mode = String(variant.usaleSalesMode || '').trim();
+      if (mode === '售完' || mode === '下架') return mode;
+      const st = variant.usaleStock;
+      if (st !== null && st !== undefined && st !== '' && Number(st) <= 0) return '庫存0';
+      return '';
+    }
+
+    function comboMemberIssues(members) {
+      const index = buildItemIndex();
+      const out = [];
+      (members || []).forEach(m => {
+        const { hit } = resolveComboMember(m, index);
+        if (!hit) return;
+        const why = comboMemberIssue(hit.variant);
+        if (why) out.push({ label: `${hit.product.name || ''} ${hit.variant.style || ''} ${hit.variant.size || ''}`.trim(), why,
+                            barcode: hit.variant.barcode || m.barcode || m.code });
+      });
+      return out;
+    }
+
     function comboMemberTotals(members) {
       const index = buildItemIndex();
       let cost = 0, wholesale = 0, weight = 0, unresolved = 0, qtyTotal = 0, has1S = false;
@@ -2981,9 +3012,17 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         wEl.value = price ? Number(price.toFixed(2)) : '';
         gEl.value = weight ? Number(weight.toFixed(3)) : '';
       }
+      const issues = comboMemberIssues(combo.members);
       summary.textContent = `${combo.members.length} 種 / 共 ${qtyTotal} 件`
-        + (unresolved ? `，${unresolved} 種對不到` : '');
-      summary.className = 'v-combo-summary text-xs ' + (unresolved ? 'text-red-500' : 'text-gray-400');
+        + (unresolved ? `，${unresolved} 種對不到` : '')
+        + (issues.length ? `　⚠ ${issues.length} 個成員缺貨` : '');
+      summary.className = 'v-combo-summary text-xs '
+        + (unresolved ? 'text-red-500' : (issues.length ? 'text-orange-700 font-bold' : 'text-gray-400'));
+      summary.title = issues.length
+        ? '成員缺貨，這個組合出不了貨：\n' + issues.map(x => `・${x.label}（${x.why}）`).join('\n')
+        : '';
+      // 整列標色，捲過去一眼就看得到
+      tr.classList.toggle('bg-orange-50', issues.length > 0);
       calcVariant(tr);
     }
 
@@ -3462,6 +3501,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
           oninput="calcVariant(this.closest('tr'))"></td>
         <td class="border px-1 py-1 bg-orange-50 text-center"><input class="v-shopee-margin w-20 border-0 bg-transparent px-1 text-sm text-center" type="text" readonly tabindex="-1"></td>
         <td class="border px-1 py-1 bg-teal-50"><select class="v-variant-img w-28 border-0 bg-transparent text-xs" data-selected="${d.variantImg||''}" onchange="this.dataset.selected=this.value"></select></td>
+        <td class="border px-1 py-1 bg-slate-50"><input class="v-usale-stock w-14 border-0 bg-transparent px-1 text-sm text-right text-gray-600" type="text" readonly tabindex="-1"
+          value="${d.usaleStock ?? ''}" data-v="${d.usaleStock ?? ''}" title="ERP 同步回來的可用庫存，唯讀"></td>
+        <td class="border px-1 py-1 bg-slate-50"><input class="v-usale-mode w-14 border-0 bg-transparent px-1 text-sm text-gray-600" type="text" readonly tabindex="-1"
+          value="${d.usaleSalesMode || ''}" data-v="${d.usaleSalesMode || ''}" title="ERP 同步回來的銷售模式，唯讀"></td>
         <td class="border px-1 py-1"><input class="v-stock w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.stock||0}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-preorder w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.preorder??500}" placeholder="0"></td>
         <td class="border px-1 py-1"><input class="v-safety w-14 border-0 bg-transparent px-1 text-sm text-right" type="number" value="${d.safety??'0'}" placeholder="0"
@@ -4630,6 +4673,8 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
         variantImg:   tr.querySelector('.v-variant-img').value,
         spec:         tr.querySelector('.v-spec').value,
         orig:         tr.querySelector('.v-orig').value,
+        usaleStock:     tr.querySelector('.v-usale-stock').dataset.v || '',
+        usaleSalesMode: tr.querySelector('.v-usale-mode').dataset.v || '',
         stock:        tr.querySelector('.v-stock').value,
         preorder:     tr.querySelector('.v-preorder').value,
         safety:       tr.querySelector('.v-safety').value,
@@ -7376,6 +7421,13 @@ ${co.bank?`<div class="bank">
       document.getElementById('c_wholesale').textContent =
         `${Number(t.wholesale.toFixed(2))} ／ ${Number(t.weight.toFixed(3))} kg`;
 
+      const issues = comboMemberIssues(comboEditing.members);
+      const warn = document.getElementById('c_stock_warn');
+      warn.textContent = issues.length
+        ? `⚠ ${issues.length} 個成員缺貨，這個組合出不了貨：` + issues.map(x => `${x.label}（${x.why}）`).join('、')
+        : '';
+      warn.className = issues.length ? 'text-xs text-orange-700 font-bold mb-2' : '';
+
       const flags = {};   // 複合商品自己沒有標籤
       renderMarginCell(document.getElementById('c_margin'), Number(pVal('c_sell')) || 0, t.cost, flags, MARGIN_PASS_DEFAULT, AD_RATE_DEFAULT);
       renderMarginCell(document.getElementById('c_shopee_margin'), Number(pVal('c_shopee_sell')) || 0, t.cost, flags, MARGIN_PASS_SHOPEE, AD_RATE_SHOPEE);
@@ -7388,11 +7440,13 @@ ${co.bank?`<div class="bank">
       if (!ms.length) { box.innerHTML = '<div class="text-xs text-gray-400 py-2">還沒有成員，用下面的搜尋加入</div>'; return; }
       box.innerHTML = ms.map((m, i) => {
         const { hit, via, reason } = resolveComboMember(m, index);
+        const issue = hit ? comboMemberIssue(hit.variant) : '';
         const info = hit
           ? `<span class="text-gray-700">${hit.product.name || ''}　${hit.variant.style || ''} ${hit.variant.size || ''}</span>
+             ${issue ? `<span class="text-orange-700 font-bold ml-1">⚠ ${issue}</span>` : ''}
              <span class="text-gray-400 ml-1">批價 ${hit.variant.wholesale || 0}　重量 ${hit.variant.weight || 0}kg　(${via})</span>`
           : `<span class="text-red-500">對不到：${reason || '未知'}</span>`;
-        return `<div class="flex items-center gap-2 text-xs py-1 border-b">
+        return `<div class="flex items-center gap-2 text-xs py-1 border-b ${issue ? 'bg-orange-50' : ''}">
           <span class="font-mono w-32 shrink-0">${m.barcode || m.code || ''}</span>
           <input type="number" min="1" value="${m.qty || 1}" class="w-14 border rounded px-1 py-0.5" onchange="setComboEditQty(${i}, this.value)">
           <div class="flex-1">${info}</div>
@@ -7551,6 +7605,7 @@ ${co.bank?`<div class="bank">
           <div><div class="text-xs text-gray-500">蝦皮毛利率</div><div id="c_shopee_margin" class="text-lg">—</div></div>
         </div>
 
+        <div id="c_stock_warn"></div>
         <div class="text-sm font-bold text-gray-700 mb-1">成員</div>
         <div id="c_members" class="bg-white border rounded p-2 mb-2 max-h-72 overflow-y-auto"></div>
         <input id="c_search" type="text" class="w-full border rounded px-2 py-1.5 text-sm" placeholder="🔍 搜尋要加入的品項（商品編號、名稱、條碼、樣式）" oninput="renderComboEditSearch()">

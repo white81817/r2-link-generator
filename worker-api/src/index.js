@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-31-syncstock-v1',
+  version: '2026-08-31-syncstock-v2',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot', 'combos', 'syncstock'],
   timestamp: new Date().toISOString(),
 }));
@@ -644,6 +644,9 @@ function productItemEntries(code, data) {
     sku1688: v.sku1688 || null,
     // 複合商品的成本要依「每個成員自己的廠商標籤」換匯，所以標籤也得跟著
     tags: productTags(data),
+    // ERP 同步回來的實況，複合商品要靠它判斷成員有沒有斷貨
+    usaleStock: v.usaleStock == null ? null : String(v.usaleStock),
+    usaleSalesMode: String(v.usaleSalesMode || ''),
     idx: i + 1,
   }));
 }
@@ -903,9 +906,12 @@ app.post('/api/products/sync-stock', async (c) => {
         let v = variants.find(x => String(x.barcode || '').trim().toUpperCase() === u.barcode);
         if (!v) v = variants[u.idx - 1];
         if (!v) continue;
+        // 寫進 usale* 專屬欄位：這是「ERP 現在的實況」，只給人看。
+        // 可編輯的 stock／salesMode 是上架時要送出去的值，同步不能蓋掉。
         const newStock = u.stock == null || u.stock === '' ? null : String(u.stock);
-        if (newStock !== null && String(v.stock ?? '') !== newStock) { v.stock = newStock; touched++; }
-        if (u.salesMode && v.salesMode !== u.salesMode) { v.salesMode = u.salesMode; touched++; }
+        if (newStock !== null && String(v.usaleStock ?? '') !== newStock) { v.usaleStock = newStock; touched++; }
+        if (u.salesMode && v.usaleSalesMode !== u.salesMode) { v.usaleSalesMode = u.salesMode; touched++; }
+        if (touched) v.usaleSyncedAt = now;
       }
 
       if (!touched) return;
@@ -917,7 +923,7 @@ app.post('/api/products/sync-stock', async (c) => {
     }));
   }
 
-  // 摘要清單的時間戳與品項索引的庫存要跟著動，但整批只寫一次
+  // 摘要清單的時間戳與品項索引都要跟著動，但整批各只寫一次
   if (changedCodes.length) {
     const listRaw = await c.env.CACHE.get('product:list');
     if (listRaw) {
@@ -925,6 +931,17 @@ app.post('/api/products/sync-stock', async (c) => {
       const set = new Set(changedCodes);
       list.forEach(x => { if (set.has(x.code)) { x.updatedAt = now; x.updatedBy = updatedBy; } });
       await c.env.CACHE.put('product:list', JSON.stringify(list));
+    }
+
+    // 複合商品的缺貨提醒讀的是品項索引，不更新的話會一直顯示舊狀態
+    const itemsRaw2 = await c.env.CACHE.get('product:items');
+    if (itemsRaw2) {
+      const map = JSON.parse(itemsRaw2);
+      for (const code of changedCodes) {
+        const raw = await c.env.CACHE.get(`product:${code}`);
+        if (raw) mergeItems(map, code, JSON.parse(raw).data);
+      }
+      await c.env.CACHE.put('product:items', JSON.stringify(map));
     }
   }
 
