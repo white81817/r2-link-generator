@@ -39,8 +39,8 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-31-ads-fast-v4',
-  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot'],
+  version: '2026-08-31-syncstock-v1',
+  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot', 'combos', 'syncstock'],
   timestamp: new Date().toISOString(),
 }));
 
@@ -841,6 +841,105 @@ app.put('/api/products', async (c) => {
   }
 
   return c.json({ ok: true, saved, skipped, conflicts, invalid, updatedAt: now });
+});
+
+// POST /api/products/sync-stock — 每天從 USALE 同步「庫存數量」與「銷售模式」
+// body: { items: [{ barcode, stock, salesMode }], updatedBy }
+// 只動這兩個欄位，其餘（售價、標籤、圖片、複合商品…）一律不碰——
+// ERP 沒有那些資料，全量覆蓋會把同仁在這裡調好的東西殺掉。
+// 用品項條碼定位：product:items 已經有「條碼 → 商品編號＋第幾個規格」。
+const SALES_MODES = ['可追', '售完', '下架'];
+
+app.post('/api/products/sync-stock', async (c) => {
+  if (!validateProductToken(c.req.header('X-Quote-Token'), c.env)) return c.json({ error: '未授權' }, 401);
+  let body;
+  try { body = await c.req.json(); } catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const items = Array.isArray(body && body.items) ? body.items : null;
+  if (!items) return c.json({ error: '缺少 items' }, 400);
+  if (items.length > 5000) return c.json({ error: `一次最多 5000 筆，收到 ${items.length}` }, 400);
+
+  const itemsRaw = await c.env.CACHE.get('product:items');
+  const index = itemsRaw ? JSON.parse(itemsRaw) : {};
+  if (!Object.keys(index).length) {
+    return c.json({ error: '品項索引是空的，請先在共用商品庫按〔重建索引〕' }, 409);
+  }
+
+  // 依商品分群，一個商品只讀寫一次，即使它有多個規格在這批裡
+  const byCode = new Map();
+  const notFound = [];
+  const badMode = [];
+  for (const it of items) {
+    const barcode = String((it && it.barcode) || '').trim().toUpperCase();
+    if (!barcode) continue;
+    const e = index[barcode];
+    if (!e) { if (notFound.length < 200) notFound.push(barcode); continue; }
+    const mode = it.salesMode == null ? null : String(it.salesMode).trim();
+    if (mode && !SALES_MODES.includes(mode)) {
+      if (badMode.length < 50) badMode.push(`${barcode}：${mode}`);
+      continue;
+    }
+    if (!byCode.has(e.code)) byCode.set(e.code, []);
+    byCode.get(e.code).push({ barcode, idx: e.idx, stock: it.stock, salesMode: mode });
+  }
+
+  const now = new Date().toISOString();
+  const updatedBy = String(body.updatedBy || 'ERP 同步').trim().slice(0, 40);
+  let changedVariants = 0;
+  const changedCodes = [];
+  const missingProducts = [];
+
+  const codes = [...byCode.keys()];
+  const CHUNK = 20;
+  for (let i = 0; i < codes.length; i += CHUNK) {
+    await Promise.all(codes.slice(i, i + CHUNK).map(async (code) => {
+      const raw = await c.env.CACHE.get(`product:${code}`);
+      if (!raw) { missingProducts.push(code); return; }
+      const rec = JSON.parse(raw);
+      const variants = (rec.data && rec.data.variants) || [];
+      let touched = 0;
+
+      for (const u of byCode.get(code)) {
+        // 先用條碼對，對不到才退回索引記的位置——規格增刪過的話位置會跑掉
+        let v = variants.find(x => String(x.barcode || '').trim().toUpperCase() === u.barcode);
+        if (!v) v = variants[u.idx - 1];
+        if (!v) continue;
+        const newStock = u.stock == null || u.stock === '' ? null : String(u.stock);
+        if (newStock !== null && String(v.stock ?? '') !== newStock) { v.stock = newStock; touched++; }
+        if (u.salesMode && v.salesMode !== u.salesMode) { v.salesMode = u.salesMode; touched++; }
+      }
+
+      if (!touched) return;
+      changedVariants += touched;
+      changedCodes.push(code);
+      await c.env.CACHE.put(`product:${code}`, JSON.stringify({
+        ...rec, data: rec.data, updatedAt: now, updatedBy,
+      }));
+    }));
+  }
+
+  // 摘要清單的時間戳與品項索引的庫存要跟著動，但整批只寫一次
+  if (changedCodes.length) {
+    const listRaw = await c.env.CACHE.get('product:list');
+    if (listRaw) {
+      const list = JSON.parse(listRaw);
+      const set = new Set(changedCodes);
+      list.forEach(x => { if (set.has(x.code)) { x.updatedAt = now; x.updatedBy = updatedBy; } });
+      await c.env.CACHE.put('product:list', JSON.stringify(list));
+    }
+  }
+
+  return c.json({
+    ok: true,
+    received: items.length,
+    matched: items.length - notFound.length - badMode.length,
+    changedProducts: changedCodes.length,
+    changedVariants,
+    notFound,
+    notFoundCount: notFound.length,
+    badMode,
+    missingProducts,
+    updatedAt: now,
+  });
 });
 
 // POST /api/products/rebuild-list — 依現有的 product:<code> 重建摘要清單

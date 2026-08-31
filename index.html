@@ -2105,6 +2105,10 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
             <button onclick="rebuildIndexNow()" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 rounded px-3 py-1" title="重算清單索引與品項索引。索引平常會自動維護，這裡是手動補救用的">🔧 重建索引</button>
             <button onclick="analyzeCodePatterns()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="看共用庫裡的商品編號有幾種寫法">🔢 檢查編號規則</button>
             <button onclick="cleanLegacyComboVariants()" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1" title="舊版把複合商品塞在商品的規格列裡。已經跑過就不用再跑">🧹 清理舊複合規格</button>
+            <label class="text-xs bg-green-600 text-white hover:bg-green-700 rounded px-3 py-1 cursor-pointer font-medium" title="上傳 USALE 商品列表，只更新庫存數量與銷售模式，其餘欄位一律不動">
+              🔄 同步庫存／銷售模式
+              <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="syncStockFromUsale(event)">
+            </label>
             <label class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1 cursor-pointer" title="從 USALE 匯出的商品資料整批匯入共用庫。平常不需要，資料要重灌時才用">
               ⬆ 匯入 USALE 商品資料
               <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importUsaleProducts(event)">
@@ -5433,6 +5437,81 @@ Z:\ColorFan\涼倍速\01.jpg, Z:\ColorFan\涼倍速\02.jpg"></textarea>
 
     // 取第一列（商品層級那列）某欄的值
     function r0(rows, i) { return String((rows[0] || [])[i] || '').trim(); }
+
+    // ===== 每天同步庫存與銷售模式 =====
+    // 只動這兩個欄位。ERP 沒有售價、標籤、圖片、複合商品那些資料，
+    // 全量覆蓋會把同仁在這裡調好的東西殺掉，所以走專用端點。
+    async function syncStockFromUsale(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        if (!shareToken) { alert('請先連線共用商品庫'); return; }
+
+        // csv 用 buffer 讀會被當 latin1，中文表頭會變亂碼
+        const isCsv = /\.csv$/i.test(file.name);
+        const wb = isCsv
+          ? XLSX.read(await file.text(), { type: 'string' })
+          : XLSX.read(await file.arrayBuffer());
+        const sheet = wb.SheetNames.find(n => n.includes('商品')) || wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { defval: '' });
+        if (!rows.length) { alert('檔案是空的'); return; }
+
+        const col = (r, names) => {
+          for (const n of names) {
+            for (const k of Object.keys(r)) if (String(k).trim().startsWith(n)) return String(r[k] ?? '').trim();
+          }
+          return '';
+        };
+        const items = [];
+        rows.forEach(r => {
+          const barcode = col(r, ['品項條碼']);
+          if (!barcode) return;
+          items.push({
+            barcode,
+            stock: col(r, ['庫存量', '現貨庫存']),
+            salesMode: col(r, ['銷售模式']),
+          });
+        });
+        if (!items.length) { alert('找不到「品項條碼」欄位，這份可能不是 USALE 的商品列表'); return; }
+
+        if (!confirm(`檔案有 ${items.length} 筆品項。\n\n只會更新「庫存數量」與「銷售模式」，`
+                   + `售價、標籤、圖片、複合商品都不會動。\n\n要同步嗎？`)) return;
+
+        setShareStatus('同步中…');
+        let received = 0, changedV = 0, changedP = 0;
+        const notFound = [];
+        const badMode = [];
+        for (let i = 0; i < items.length; i += 2000) {
+          const { ok, status, data } = await shareApi('/api/products/sync-stock', {
+            method: 'POST', timeout: 120000,
+            body: JSON.stringify({ items: items.slice(i, i + 2000), updatedBy: 'ERP 同步' }),
+          });
+          if (!ok) {
+            setShareStatus('');
+            alert('同步失敗：' + (data.error || `HTTP ${status}`));
+            return;
+          }
+          received += data.received || 0;
+          changedV += data.changedVariants || 0;
+          changedP += data.changedProducts || 0;
+          notFound.push(...(data.notFound || []));
+          badMode.push(...(data.badMode || []));
+        }
+        setShareStatus('');
+        await refreshSharedList();
+
+        alert(`同步完成\n`
+          + `・讀到 ${received} 筆品項\n`
+          + `・實際有變動：${changedP} 個商品、${changedV} 個欄位\n`
+          + (notFound.length ? `\n⚠ 共用庫找不到的品項條碼 ${notFound.length} 筆（新品要先建進來）：\n    ${notFound.slice(0, 10).join('、')}${notFound.length > 10 ? '…' : ''}\n` : '')
+          + (badMode.length ? `\n⚠ 銷售模式不是可追／售完／下架 ${badMode.length} 筆，已略過：\n    ${badMode.slice(0, 5).join('、')}` : ''));
+      } catch (e) {
+        setShareStatus('');
+        alert('同步失敗：' + e.message);
+      } finally {
+        event.target.value = '';
+      }
+    }
 
     // ===== 複合商品匯出（USALE 批次修改複合商品資料）=====
     // 一列一個成員，數量用重複列表示（跟匯入格式一致）。
