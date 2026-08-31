@@ -7572,9 +7572,9 @@ ${co.bank?`<div class="bank">
       <div class="flex flex-wrap items-center gap-2 mb-3 pt-4 border-t border-gray-200">
         <span class="w-1 h-5 bg-blue-600 rounded"></span>
         <h3 class="text-base font-bold text-gray-800">月報結算</h3>
-        <span id="periodNote" class="text-xs text-gray-500"></span>
+        <span id="periodNote" class="text-xs"></span>
         <div class="flex-1"></div>
-        <label class="text-sm text-gray-500">月份</label>
+        <label class="text-sm text-gray-500">結算月</label>
         <select id="perfMonth" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"></select>
         <label class="text-sm text-gray-500 ml-2">比較</label>
         <select id="perfPrev" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"></select>
@@ -7699,9 +7699,11 @@ ${co.bank?`<div class="bank">
         document.getElementById('perfTotals').innerHTML = '<div class="text-gray-400 text-sm">尚無月報資料，請先由自動化腳本上傳。</div>';
         return;
       }
+      // 下拉顯示「結算月」＝毛利月+1（value 仍為毛利月，資料以毛利月為 key）
       const sel = document.getElementById('perfMonth'), pre = document.getElementById('perfPrev');
-      sel.innerHTML = ms.map(m => `<option>${m}</option>`).join('');
-      pre.innerHTML = '<option value="">（不比較）</option>' + ms.map(m => `<option>${m}</option>`).join('');
+      const opt = m => `<option value="${m}">${perfNextMonth(m)}</option>`;
+      sel.innerHTML = ms.map(opt).join('');
+      pre.innerHTML = '<option value="">（不比較）</option>' + ms.map(opt).join('');
       sel.value = ms[ms.length - 1];
       pre.value = ms.length > 1 ? ms[ms.length - 2] : '';
       sel.onchange = () => { perfRender(); loadAds(); };
@@ -7726,10 +7728,11 @@ ${co.bank?`<div class="bank">
       const anySnap = pms.some(p => inv[p].src === 'snapshot');
       const im = perfNextMonth(m);
       document.getElementById('periodNote').innerHTML =
-        `毛利期間 <b>${m}</b>　·　庫存期間 <b>${im}</b>`
+        `<span class="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold">毛利期間 ${m}（上個月）</span>`
+        + `<span class="ml-2 text-gray-500">庫存期間 ${im}</span>`
         + (anySnap
-            ? `<span class="text-green-600">（滯銷率＝${im}-20 呆貨 ÷ 1/10/20 三份平均庫存）</span>`
-            : `<span class="text-yellow-600">（尚無 ${im} 快照，暫用月報自帶庫存數字）</span>`);
+            ? `<span class="ml-2 text-green-600">滯銷率＝${im}-20 呆貨 ÷ 1/10/20 三份平均庫存</span>`
+            : `<span class="ml-2 text-yellow-600">尚無 ${im} 快照，暫用月報自帶庫存數字</span>`);
 
       const sum = (o, k) => o ? pms.reduce((a, p) => a + ((o[p] && o[p][k]) || 0), 0) : null;
       const sumInv = (o, k) => pms.reduce((a, p) => a + ((o[p] && o[p][k]) || 0), 0);
