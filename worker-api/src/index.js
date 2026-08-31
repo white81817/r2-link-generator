@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-31-ads-snapshot-v1',
+  version: '2026-08-31-dashboard-v2',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot'],
   timestamp: new Date().toISOString(),
 }));

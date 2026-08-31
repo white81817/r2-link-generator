@@ -7534,19 +7534,19 @@ ${co.bank?`<div class="bank">
         <h2 class="text-xl font-bold text-gray-800">📊 績效儀表板</h2>
         <span id="perfRoleTag" class="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700"></span>
         <div class="flex-1"></div>
-        <label class="text-sm text-gray-500">月份</label>
-        <select id="perfMonth" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"></select>
-        <label class="text-sm text-gray-500 ml-2">比較</label>
-        <select id="perfPrev" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"></select>
-        <button onclick="perfLogout()" class="text-xs text-gray-400 hover:text-red-500 ml-2">登出</button>
+        <button onclick="perfLogout()" class="text-xs text-gray-400 hover:text-red-500">登出</button>
       </div>
 
-      <div id="perfTotals" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+      <!-- ══════════ 即時區：看當下 ══════════ -->
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-1 h-5 bg-green-500 rounded"></span>
+        <h3 class="text-base font-bold text-gray-800">即時狀態</h3>
+        <span class="text-xs text-gray-400">廣告為當月累積、庫存為最新一份快照</span>
+      </div>
 
-      <!-- 廣告即時（來自 Meta，快取1小時） -->
-      <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+      <div class="bg-white rounded-xl border border-gray-200 p-4 mb-3">
         <div class="flex items-center gap-2 mb-3">
-          <h3 class="text-sm font-semibold text-gray-700">📣 廣告即時花費</h3>
+          <h4 class="text-sm font-semibold text-gray-700">📣 廣告花費（當月累積）</h4>
           <span id="adsMeta" class="text-xs text-gray-400"></span>
           <div class="flex-1"></div>
           <button onclick="loadAds(true)" class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-50">重新抓取</button>
@@ -7554,13 +7554,33 @@ ${co.bank?`<div class="bank">
         <div id="adsBox" class="text-sm text-gray-400">載入中…</div>
       </div>
 
-      <div id="perfCards"  class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
+      <div id="liveStockWrap" class="bg-white rounded-xl border border-gray-200 p-4 mb-3 hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <h4 class="text-sm font-semibold text-gray-700">📦 庫存現況</h4>
+          <span id="liveStockMeta" class="text-xs text-gray-400"></span>
+        </div>
+        <div class="overflow-x-auto"><table id="liveStockTable" class="w-full text-sm"></table></div>
+      </div>
 
-      <!-- 庫存快照走勢（每月 10/20/30） -->
-      <div id="snapWrap" class="bg-white rounded-xl border border-gray-200 p-4 mb-6 hidden">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">📉 庫存快照走勢（呆貨／長庫齡）</h3>
+      <div id="snapWrap" class="bg-white rounded-xl border border-gray-200 p-4 mb-8 hidden">
+        <h4 class="text-sm font-semibold text-gray-700 mb-3">📉 庫存快照走勢（每月 1／10／20 號）</h4>
         <div class="overflow-x-auto"><table id="snapTable" class="w-full text-sm"></table></div>
       </div>
+
+      <!-- ══════════ 結算區：看已完成月份 ══════════ -->
+      <div class="flex flex-wrap items-center gap-2 mb-3 pt-4 border-t border-gray-200">
+        <span class="w-1 h-5 bg-blue-600 rounded"></span>
+        <h3 class="text-base font-bold text-gray-800">月報結算</h3>
+        <span id="periodNote" class="text-xs text-gray-500"></span>
+        <div class="flex-1"></div>
+        <label class="text-sm text-gray-500">月份</label>
+        <select id="perfMonth" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"></select>
+        <label class="text-sm text-gray-500 ml-2">比較</label>
+        <select id="perfPrev" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"></select>
+      </div>
+
+      <div id="perfTotals" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+      <div id="perfCards"  class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
 
       <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <h3 class="text-sm font-semibold text-gray-700 mb-3">庫存健康明細</h3>
@@ -7669,8 +7689,9 @@ ${co.bank?`<div class="bank">
         : perfRole === 'admin' ? '主管檢視（全部PM）'
         : `${perfMe} 個人檢視`;
 
-      perfRenderSnapshots();       // 快照走勢不依賴月報資料，先畫
-      loadAds();                   // 廣告即時（獨立來源）
+      perfRenderLiveStock();       // 即時區：最新快照
+      perfRenderSnapshots();       // 即時區：快照走勢
+      loadAds();                   // 即時區：廣告（獨立來源）
 
       const ms = Object.keys(data.months || {}).sort();
       if (!ms.length) {
@@ -7695,34 +7716,58 @@ ${co.bank?`<div class="bank">
       const cur = perfData.months[m], prev = perfData.months[pv] || null;
       const pms = Object.keys(cur);
 
+      // 庫存指標一律走快照版（不足時自動退回月報自帶值）
+      const inv = {}, invPrev = {};
+      pms.forEach(p => {
+        inv[p] = perfInventoryFor(m, p);
+        if (pv) invPrev[p] = perfInventoryFor(pv, p);
+      });
+      const anySnap = pms.some(p => inv[p].src === 'snapshot');
+      const im = perfNextMonth(m);
+      document.getElementById('periodNote').innerHTML =
+        `毛利期間 <b>${m}</b>　·　庫存期間 <b>${im}</b>`
+        + (anySnap
+            ? `<span class="text-green-600">（滯銷率＝${im}-20 呆貨 ÷ 1/10/20 三份平均庫存）</span>`
+            : `<span class="text-yellow-600">（尚無 ${im} 快照，暫用月報自帶庫存數字）</span>`);
+
       const sum = (o, k) => o ? pms.reduce((a, p) => a + ((o[p] && o[p][k]) || 0), 0) : null;
-      const totals = [['總業績', 'rev', true], ['最終貢獻毛利', 'final', true],
-                      ['呆貨金額', 'dead', false], ['長庫齡貨款', 'old', false]];
-      document.getElementById('perfTotals').innerHTML = totals.map(([lb, k, up]) => `
+      const sumInv = (o, k) => pms.reduce((a, p) => a + ((o[p] && o[p][k]) || 0), 0);
+      const totals = [
+        ['總業績', () => sum(cur, 'rev'), () => sum(prev, 'rev'), true],
+        ['最終貢獻毛利', () => sum(cur, 'final'), () => sum(prev, 'final'), true],
+        ['呆貨金額', () => sumInv(inv, 'dead'), () => (pv ? sumInv(invPrev, 'dead') : null), false],
+        ['長庫齡貨款', () => sumInv(inv, 'aged'), () => (pv ? sumInv(invPrev, 'aged') : null), false],
+      ];
+      document.getElementById('perfTotals').innerHTML = totals.map(([lb, f, fp, up]) => `
         <div class="bg-white rounded-xl border border-gray-200 p-4">
           <div class="text-xs text-gray-500 mb-1">${lb}</div>
-          <div class="text-2xl font-bold text-gray-800">${_pf(sum(cur, k))}</div>
-          <div class="mt-1">${_pdelta(sum(cur, k), sum(prev, k), up)}</div>
+          <div class="text-2xl font-bold text-gray-800">${_pf(f())}</div>
+          <div class="mt-1">${_pdelta(f(), fp(), up)}</div>
         </div>`).join('');
 
       document.getElementById('perfCards').innerHTML = pms.map(p => {
         const c = cur[p], q = prev ? prev[p] : null;
-        const dm = c.deadmonths || 0;
+        const iv = inv[p], ivq = pv ? invPrev[p] : null;
+        const sr = iv.slowrate || 0;
+        const dm = c.cogs ? iv.dead / c.cogs : (c.deadmonths || 0);
         const tag = dm <= 1 ? '<span class="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">呆貨≤1月</span>'
                   : (dm > 3 ? '<span class="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600">呆貨&gt;3月</span>' : '');
-        const w = Math.min((c.slowrate || 0) * 100, 100);
-        const col = c.slowrate >= .5 ? 'bg-red-500' : (c.slowrate >= .3 ? 'bg-yellow-500' : 'bg-green-500');
+        const w = Math.min(sr * 100, 100);
+        const col = sr >= .5 ? 'bg-red-500' : (sr >= .3 ? 'bg-yellow-500' : 'bg-green-500');
         const row = (lb, v, d) => `<div class="flex justify-between py-1.5 border-b border-gray-50 text-sm">
             <span class="text-gray-500">${lb}</span><span class="font-medium">${v} ${d || ''}</span></div>`;
+        const srNote = iv.src === 'snapshot'
+          ? `<span class="text-xs text-gray-400">（${iv.dates.length}/3 份快照）</span>` : '';
         return `<div class="bg-white rounded-xl border border-gray-200 p-4">
           <div class="flex items-center gap-2 mb-3"><span class="text-lg font-bold text-gray-800">${p}</span>${tag}</div>
           ${row('業績', _pf(c.rev), _pdelta(c.rev, q && q.rev, true))}
           ${row('最終貢獻毛利', _pf(c.final), _pdelta(c.final, q && q.final, true))}
           ${row('最終毛利率', _pp(c.rate))}
           ${row('官網廣告費', _pf(c.adgw))}
-          ${row('呆貨金額', _pf(c.dead), _pdelta(c.dead, q && q.dead, false))}
+          ${row('呆貨金額', _pf(iv.dead), _pdelta(iv.dead, ivq && ivq.dead, false))}
+          ${row('長庫齡貨款', _pf(iv.aged), _pdelta(iv.aged, ivq && ivq.aged, false))}
           ${row('呆貨=幾個月銷貨', dm.toFixed(2) + ' 月')}
-          ${row('滯銷率', _pp(c.slowrate))}
+          ${row('滯銷率' + srNote, _pp(sr))}
           <div class="h-1.5 rounded bg-gray-100 overflow-hidden mt-2"><div class="h-full ${col}" style="width:${w}%"></div></div>
         </div>`;
       }).join('');
@@ -7734,12 +7779,12 @@ ${co.bank?`<div class="bank">
         <th class="${th}">└ 呆貨</th><th class="${th}">└ 老但賣得動</th><th class="${th}">└ 過季轉換品</th>
         <th class="${th}">新貨</th><th class="${th}">滯銷率</th></tr></thead><tbody>`;
       pms.forEach(p => {
-        const c = cur[p];
+        const c = cur[p], iv = inv[p];
         html += `<tr><td class="${td} text-left font-medium">${p}</td>
-          <td class="${td}">${_pf(c.inv)}</td><td class="${td}">${_pf(c.old)}</td>
-          <td class="${td}">${_pf(c.dead)}</td><td class="${td}">${_pf(c.alive)}</td>
+          <td class="${td}">${_pf(c.inv)}</td><td class="${td}">${_pf(iv.aged)}</td>
+          <td class="${td}">${_pf(iv.dead)}</td><td class="${td}">${_pf(c.alive)}</td>
           <td class="${td}">${_pf(c.qj)}</td><td class="${td}">${_pf(c.inv - c.old)}</td>
-          <td class="${td}">${_pp(c.slowrate)}</td></tr>`;
+          <td class="${td}">${_pp(iv.slowrate)}</td></tr>`;
       });
       if (pms.length > 1) {
         const t = k => pms.reduce((a, p) => a + (cur[p][k] || 0), 0);
@@ -7791,6 +7836,67 @@ ${co.bank?`<div class="bank">
       box.innerHTML = html;
       document.getElementById('adsMeta').textContent =
         `${data.month || ''}　更新於 ${data.fetched || '—'}`;
+    }
+
+    // ── 庫存指標：用快照計算（毛利月 M 對照庫存月 M+1）──────────────────
+    // 分母＝該庫存月 1/10/20 三份快照「總庫存」平均；分子＝20 號那份的呆貨；
+    // 長庫齡＝最新一份快照的值（不做平均）。快照不足時退回月報自帶的數字。
+    function perfNextMonth(ym) {
+      const [y, m] = ym.split('-').map(Number);
+      const d = new Date(y, m, 1);   // m 已是下個月（Date 月份從 0 起算）
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function perfInventoryFor(month, pm) {
+      const snaps = perfData.snapshots || {};
+      const im = perfNextMonth(month);                    // 庫存月
+      const want = ['01', '10', '20'].map(d => `${im}-${d}`);
+      const got = want.filter(d => snaps[d] && snaps[d][pm]);
+      const fallback = (perfData.months[month] || {})[pm] || {};
+
+      if (!got.length) {
+        return { slowrate: fallback.slowrate, dead: fallback.dead, aged: fallback.old,
+                 inv: fallback.invx, src: 'report', im, dates: [] };
+      }
+      const invs = got.map(d => snaps[d][pm].invx != null ? snaps[d][pm].invx : snaps[d][pm].inv);
+      const denom = invs.reduce((a, b) => a + b, 0) / invs.length;
+      const last = got[got.length - 1];
+      const twentieth = snaps[`${im}-20`] && snaps[`${im}-20`][pm] ? `${im}-20` : last;
+      const dead = snaps[twentieth][pm].dead;
+      return {
+        slowrate: denom ? dead / denom : 0,
+        dead, aged: snaps[last][pm].aged, inv: Math.round(denom),
+        src: 'snapshot', im, dates: got, numDate: twentieth, complete: got.length === 3,
+      };
+    }
+
+    // ── 即時庫存現況（最新一份快照）────────────────────────────────────
+    function perfRenderLiveStock() {
+      const snaps = perfData.snapshots || {};
+      const dates = Object.keys(snaps).sort();
+      const wrap = document.getElementById('liveStockWrap');
+      if (!dates.length) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      const d = dates[dates.length - 1];
+      const rows = snaps[d];
+      const pms = Object.keys(rows);
+      const th = 'px-3 py-2 text-right text-xs font-semibold text-gray-500 bg-gray-50';
+      const td = 'px-3 py-2 text-right border-b border-gray-100';
+      let h = `<thead><tr><th class="${th} text-left">PM</th><th class="${th}">總庫存</th>
+        <th class="${th}">呆貨</th><th class="${th}">長庫齡</th>
+        <th class="${th}">呆貨項數</th><th class="${th}">呆貨占比</th></tr></thead><tbody>`;
+      pms.forEach(p => {
+        const r = rows[p];
+        const base = r.invx != null ? r.invx : r.inv;
+        const pct = base ? r.dead / base : 0;
+        const c = pct >= .5 ? 'text-red-500' : (pct >= .3 ? 'text-yellow-600' : 'text-green-600');
+        h += `<tr><td class="${td} text-left font-medium">${p}</td>
+          <td class="${td}">${_pf(r.inv)}</td><td class="${td} font-semibold">${_pf(r.dead)}</td>
+          <td class="${td}">${_pf(r.aged)}</td><td class="${td}">${r.n_dead != null ? r.n_dead : '—'}</td>
+          <td class="${td} font-semibold ${c}">${_pp(pct)}</td></tr>`;
+      });
+      document.getElementById('liveStockTable').innerHTML = h + '</tbody>';
+      document.getElementById('liveStockMeta').textContent = `快照日期 ${d}`;
     }
 
     // ── 庫存快照走勢 ────────────────────────────────────────────────────
