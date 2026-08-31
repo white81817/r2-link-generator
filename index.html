@@ -7812,21 +7812,24 @@ ${co.bank?`<div class="bank">
       const m = document.getElementById('adsMonth').value || '';
       box.innerHTML = '<span class="text-gray-400">抓取中…</span>';
       const q = '/api/ads' + (m ? `?month=${m}` : '') + (refresh ? (m ? '&' : '?') + 'refresh=1' : '');
-      const { ok, data } = await perfApi(q);
+      // 本月與上月平行抓（不要串行等待）
+      let prevQ = null;
+      if (m) {
+        const [py, pmn] = m.split('-').map(Number);
+        const pd = new Date(py, pmn - 2, 1);
+        prevQ = `/api/ads?month=${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+      }
+      const [main, prevRes] = await Promise.all([
+        perfApi(q),
+        prevQ ? perfApi(prevQ) : Promise.resolve({ ok: false }),
+      ]);
+      const { ok, data } = main;
       if (!ok) {
         box.innerHTML = `<span class="text-red-500">讀取失敗：${data.error || '未知錯誤'}</span>`;
         document.getElementById('adsMeta').textContent = '';
         return;
       }
-      // 同時抓上個月做比較（失敗就不比，不影響主要顯示）
-      let prevAds = null;
-      if (m) {
-        const [py, pmn] = m.split('-').map(Number);
-        const pd = new Date(py, pmn - 2, 1);
-        const pmStr = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
-        const r2 = await perfApi(`/api/ads?month=${pmStr}`);
-        if (r2.ok) prevAds = r2.data;
-      }
+      const prevAds = prevRes.ok ? prevRes.data : null;
       const pms = Object.keys(data.personal || {});
       const cv = data.conv || {};
       const th = 'px-3 py-2 text-right text-xs font-semibold text-gray-500 bg-gray-50';

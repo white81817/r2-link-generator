@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-31-ads-conv-v3',
+  version: '2026-08-31-ads-fast-v4',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot'],
   timestamp: new Date().toISOString(),
 }));
@@ -1596,7 +1596,8 @@ app.get('/api/ads', async (c) => {
     return 0;
   }
 
-  for (const acc of ADS_ACCOUNTS) {
+  // 十個帳號平行抓（原本是逐一 await，速度差約一個數量級）
+  const results = await Promise.all(ADS_ACCOUNTS.map(async (acc) => {
     const url = `https://graph.facebook.com/v21.0/act_${acc.id}/insights`
       + `?level=ad&fields=ad_id,campaign_name,spend,action_values`
       + `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`
@@ -1604,17 +1605,22 @@ app.get('/api/ads', async (c) => {
     try {
       const r = await fetch(url);
       const j = await r.json();
-      if (j.error) { errors.push(`${acc.name}: ${j.error.message}`); continue; }
-      const fx = acc.cur === 'USD' ? rate : 1;
-      for (const row of (j.data || [])) {
-        const spend = Number(row.spend || 0) * fx;
-        const cv = purchaseValue(row.action_values) * fx;
-        const pm = adsOwnerOf(row.ad_id, row.campaign_name);
-        if (pm) { rows[pm] += spend; conv[pm] += cv; }
-        else { shared += spend; sharedConv += cv; }
-      }
+      if (j.error) return { acc, err: j.error.message };
+      return { acc, data: j.data || [] };
     } catch (e) {
-      errors.push(`${acc.name}: ${e.message}`);
+      return { acc, err: e.message };
+    }
+  }));
+
+  for (const res of results) {
+    if (res.err) { errors.push(`${res.acc.name}: ${res.err}`); continue; }
+    const fx = res.acc.cur === 'USD' ? rate : 1;
+    for (const row of res.data) {
+      const spend = Number(row.spend || 0) * fx;
+      const cv = purchaseValue(row.action_values) * fx;
+      const pm = adsOwnerOf(row.ad_id, row.campaign_name);
+      if (pm) { rows[pm] += spend; conv[pm] += cv; }
+      else { shared += spend; sharedConv += cv; }
     }
   }
 
@@ -1631,7 +1637,10 @@ app.get('/api/ads', async (c) => {
     errors,
     fetched: new Date().toISOString().slice(0, 16).replace('T', ' '),
   };
-  await c.env.CACHE.put(cacheKey, JSON.stringify(payload), { expirationTtl: 3600 }); // 快取 1 小時
+  // 已結束的月份數字不會再變 → 快取 30 天；當月才用 1 小時
+  const isPast = month < new Date().toISOString().slice(0, 7);
+  await c.env.CACHE.put(cacheKey, JSON.stringify(payload),
+    { expirationTtl: isPast ? 2592000 : 3600 });
   return c.json(auth.role === 'pm' ? adsForPm(payload, auth.pm) : payload);
 });
 
