@@ -295,6 +295,29 @@ didibox「🛒 1688 採購」分頁          1688 商品頁（Tampermonkey）
 
 **雲端 session 連不到 1688（出口政策封鎖），本機 session 才有辦法。**
 
+## 每日 USALE 同步
+
+同一份「商品列表.xlsx」有兩個用途，分開兩支腳本、兩個通行碼：
+
+| 腳本 | 頻率 | 通行碼 | 端點 |
+|---|---|---|---|
+| `tools/sync_stock.py` | 每天 | `QUOTE_TOKEN` | `/api/products/sync-stock` |
+| `snapshot_stock.py`（在本機的績效計算資料夾） | 每月 1／10／20 | `PERF_TOKEN` | `/api/performance/snapshot` |
+
+`tools/daily_usale.sh` 一次跑完兩支，非 1／10／20 會自動略過快照。
+
+```bash
+read -s QUOTE_TOKEN && export QUOTE_TOKEN
+python3 tools/sync_stock.py 商品列表.xlsx --dry   # 先看欄位對得對不對
+python3 tools/sync_stock.py 商品列表.xlsx
+```
+
+- **Cloudflare 會擋 Python 預設 UA（403 code 1010）**，必須帶瀏覽器 User-Agent
+  與 `Origin: https://didibox.cc`。兩支腳本都是這樣寫的，別拿掉。
+- 同步只寫 `usaleStock` / `usaleSalesMode`，**不碰可編輯的 `stock` / `salesMode`**——
+  後者是上架時要送出去的值，覆蓋掉會把同仁調好的東西殺掉。
+- 欄位名稱靠候選清單比對（完全相同優先，再比開頭），USALE 的欄位常帶括號說明。
+
 ## 開發注意事項
 
 - 修改 `index.html` 後的語法檢查（**必須連「全部區塊串起來」一起檢查**——
