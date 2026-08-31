@@ -7542,7 +7542,25 @@ ${co.bank?`<div class="bank">
       </div>
 
       <div id="perfTotals" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+
+      <!-- 廣告即時（來自 Meta，快取1小時） -->
+      <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+        <div class="flex items-center gap-2 mb-3">
+          <h3 class="text-sm font-semibold text-gray-700">📣 廣告即時花費</h3>
+          <span id="adsMeta" class="text-xs text-gray-400"></span>
+          <div class="flex-1"></div>
+          <button onclick="loadAds(true)" class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-50">重新抓取</button>
+        </div>
+        <div id="adsBox" class="text-sm text-gray-400">載入中…</div>
+      </div>
+
       <div id="perfCards"  class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
+
+      <!-- 庫存快照走勢（每月 10/20/30） -->
+      <div id="snapWrap" class="bg-white rounded-xl border border-gray-200 p-4 mb-6 hidden">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">📉 庫存快照走勢（呆貨／長庫齡）</h3>
+        <div class="overflow-x-auto"><table id="snapTable" class="w-full text-sm"></table></div>
+      </div>
 
       <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <h3 class="text-sm font-semibold text-gray-700 mb-3">庫存健康明細</h3>
@@ -7553,6 +7571,25 @@ ${co.bank?`<div class="bank">
           所以「長庫齡 ＝ 呆貨 ＋ 老但還賣得動 ＋ 過季轉換品」。
           貨款成本已套匯率（大陸×4.741、韓國×0.023），代表實際壓在倉庫的錢。
         </p>
+      </div>
+
+      <!-- 明細清單：毛利 / 滯銷 / 長庫齡 -->
+      <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+        <div class="flex items-center gap-2 mb-3 flex-wrap">
+          <h3 class="text-sm font-semibold text-gray-700">📋 明細清單</h3>
+          <div class="flex gap-1 ml-2">
+            <button onclick="perfShowList('margin')" id="lbtn-margin"
+              class="text-xs px-3 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700">毛利</button>
+            <button onclick="perfShowList('dead')" id="lbtn-dead"
+              class="text-xs px-3 py-1 rounded border border-gray-200 text-gray-600">滯銷</button>
+            <button onclick="perfShowList('aged')" id="lbtn-aged"
+              class="text-xs px-3 py-1 rounded border border-gray-200 text-gray-600">長庫齡</button>
+          </div>
+          <select id="listPm" class="border border-gray-300 rounded px-2 py-1 text-xs ml-2"></select>
+          <div class="flex-1"></div>
+          <span id="listCount" class="text-xs text-gray-400"></span>
+        </div>
+        <div class="overflow-x-auto" style="max-height:520px"><table id="listTable" class="w-full text-sm"></table></div>
       </div>
 
       <div class="text-xs text-gray-400" id="perfMeta"></div>
@@ -7632,9 +7669,12 @@ ${co.bank?`<div class="bank">
         : perfRole === 'admin' ? '主管檢視（全部PM）'
         : `${perfMe} 個人檢視`;
 
+      perfRenderSnapshots();       // 快照走勢不依賴月報資料，先畫
+      loadAds();                   // 廣告即時（獨立來源）
+
       const ms = Object.keys(data.months || {}).sort();
       if (!ms.length) {
-        document.getElementById('perfTotals').innerHTML = '<div class="text-gray-400 text-sm">尚無資料，請先由自動化腳本上傳。</div>';
+        document.getElementById('perfTotals').innerHTML = '<div class="text-gray-400 text-sm">尚無月報資料，請先由自動化腳本上傳。</div>';
         return;
       }
       const sel = document.getElementById('perfMonth'), pre = document.getElementById('perfPrev');
@@ -7642,7 +7682,8 @@ ${co.bank?`<div class="bank">
       pre.innerHTML = '<option value="">（不比較）</option>' + ms.map(m => `<option>${m}</option>`).join('');
       sel.value = ms[ms.length - 1];
       pre.value = ms.length > 1 ? ms[ms.length - 2] : '';
-      sel.onchange = pre.onchange = perfRender;
+      sel.onchange = () => { perfRender(); loadAds(); };
+      pre.onchange = perfRender;
       document.getElementById('perfMeta').textContent =
         `資料月份 ${ms[0]} ～ ${ms[ms.length - 1]}　·　更新於 ${data.generated || '—'}　·　長庫齡門檻 ${data.age_th || 60} 天`;
       perfRender();
@@ -7709,6 +7750,135 @@ ${co.bank?`<div class="bank">
           <td class="${td}">—</td></tr>`;
       }
       document.getElementById('perfTable').innerHTML = html + '</tbody>';
+      perfRenderList();
+    }
+
+    // ── 廣告即時花費（Meta，後端快取1小時）──────────────────────────────
+    async function loadAds(refresh) {
+      const box = document.getElementById('adsBox');
+      const m = document.getElementById('perfMonth').value || '';
+      box.innerHTML = '<span class="text-gray-400">抓取中…</span>';
+      const q = '/api/ads' + (m ? `?month=${m}` : '') + (refresh ? (m ? '&' : '?') + 'refresh=1' : '');
+      const { ok, data } = await perfApi(q);
+      if (!ok) {
+        box.innerHTML = `<span class="text-red-500">讀取失敗：${data.error || '未知錯誤'}</span>`;
+        document.getElementById('adsMeta').textContent = '';
+        return;
+      }
+      const pms = Object.keys(data.personal || {});
+      const cell = (lb, v, cls) => `<div class="border border-gray-100 rounded-lg p-3">
+          <div class="text-xs text-gray-500 mb-1">${lb}</div>
+          <div class="text-lg font-bold ${cls || 'text-gray-800'}">${_pf(v)}</div></div>`;
+      let html = '<div class="grid grid-cols-2 md:grid-cols-5 gap-2">';
+      pms.forEach(p => { html += cell(p, data.personal[p]); });
+      html += cell('共用（未分攤）', data.shared, 'text-yellow-700');
+      html += '</div>';
+      if (data.total != null) {
+        html += `<div class="text-xs text-gray-500 mt-2">合計 ${_pf(data.total)}`
+              + (data.rate ? `　·　美金帳號以 ${data.rate} 換算台幣` : '') + '</div>';
+      }
+      if (data.accounts && data.accounts.length) {
+        html += '<details class="mt-2"><summary class="text-xs text-gray-500 cursor-pointer">各廣告帳號明細</summary>'
+              + '<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2">'
+              + data.accounts.map(a => `<div class="text-xs border border-gray-100 rounded p-2">
+                  <div class="text-gray-500">${a.name}<span class="text-gray-300">(${a.cur})</span></div>
+                  <div class="font-semibold">${_pf(a.spend)}</div></div>`).join('')
+              + '</div></details>';
+      }
+      if (data.errors && data.errors.length) {
+        html += `<div class="text-xs text-red-500 mt-2">部分帳號讀取失敗：${data.errors.join('；')}</div>`;
+      }
+      box.innerHTML = html;
+      document.getElementById('adsMeta').textContent =
+        `${data.month || ''}　更新於 ${data.fetched || '—'}`;
+    }
+
+    // ── 庫存快照走勢 ────────────────────────────────────────────────────
+    function perfRenderSnapshots() {
+      const snaps = perfData.snapshots || {};
+      const dates = Object.keys(snaps).sort();
+      const wrap = document.getElementById('snapWrap');
+      if (!dates.length) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      const pms = Object.keys(snaps[dates[dates.length - 1]] || {});
+      const th = 'px-3 py-2 text-right text-xs font-semibold text-gray-500 bg-gray-50';
+      const td = 'px-3 py-2 text-right border-b border-gray-100';
+      let h = `<thead><tr><th class="${th} text-left">日期</th>`;
+      pms.forEach(p => { h += `<th class="${th}">${p}<br><span class="font-normal text-gray-400">呆貨</span></th>`; });
+      pms.forEach(p => { h += `<th class="${th}">${p}<br><span class="font-normal text-gray-400">長庫齡</span></th>`; });
+      h += '</tr></thead><tbody>';
+      dates.slice(-12).forEach(d => {
+        h += `<tr><td class="${td} text-left font-medium">${d}</td>`;
+        pms.forEach(p => { h += `<td class="${td}">${_pf(snaps[d][p] && snaps[d][p].dead)}</td>`; });
+        pms.forEach(p => { h += `<td class="${td}">${_pf(snaps[d][p] && snaps[d][p].aged)}</td>`; });
+        h += '</tr>';
+      });
+      document.getElementById('snapTable').innerHTML = h + '</tbody>';
+    }
+
+    // ── 明細清單 ────────────────────────────────────────────────────────
+    let perfListKind = 'margin';
+    function perfShowList(kind) {
+      perfListKind = kind;
+      ['margin', 'dead', 'aged'].forEach(k => {
+        const b = document.getElementById('lbtn-' + k);
+        if (!b) return;
+        const on = k === kind;
+        b.className = 'text-xs px-3 py-1 rounded border '
+          + (on ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600');
+      });
+      perfRenderList();
+    }
+
+    function perfRenderList() {
+      const m = document.getElementById('perfMonth').value;
+      const cur = perfData.months[m] || {};
+      const pmSel = document.getElementById('listPm');
+      const pms = Object.keys(cur);
+      if (pmSel.options.length !== pms.length || !pms.includes(pmSel.value)) {
+        pmSel.innerHTML = pms.map(p => `<option>${p}</option>`).join('');
+        pmSel.onchange = perfRenderList;
+      }
+      const pm = pmSel.value || pms[0];
+      const rows = ((cur[pm] || {}).lists || {})[perfListKind] || [];
+      const th = 'px-3 py-2 text-right text-xs font-semibold text-gray-500 bg-gray-50 sticky top-0';
+      const td = 'px-3 py-2 text-right border-b border-gray-100';
+      let h = '';
+      if (perfListKind === 'margin') {
+        h = `<thead><tr><th class="${th} text-left">商品</th><th class="${th} text-left">樣式/尺寸</th>
+             <th class="${th}">通路</th><th class="${th}">數量</th><th class="${th}">銷售額</th>
+             <th class="${th}">基礎貢獻毛利</th><th class="${th}">毛利率</th></tr></thead><tbody>`;
+        rows.forEach(r => {
+          const c = r.rate < 0.15 ? 'text-red-500' : (r.rate < 0.25 ? 'text-yellow-600' : 'text-green-600');
+          h += `<tr><td class="${td} text-left">${r.name}<div class="text-xs text-gray-400">${r.code}</div></td>
+            <td class="${td} text-left text-xs text-gray-500">${[r.style, r.size].filter(Boolean).join(' / ')}</td>
+            <td class="${td}">${r.ch}</td><td class="${td}">${r.qty}</td>
+            <td class="${td}">${_pf(r.rev)}</td><td class="${td}">${_pf(r.gm)}</td>
+            <td class="${td} font-semibold ${c}">${_pp(r.rate)}</td></tr>`;
+        });
+      } else {
+        const isDead = perfListKind === 'dead';
+        h = `<thead><tr><th class="${th} text-left">商品</th><th class="${th} text-left">樣式/尺寸</th>
+             <th class="${th}">在庫天數</th><th class="${th}">庫存量</th><th class="${th}">貨款成本</th>
+             <th class="${th}">${isDead ? '覆蓋天數' : '是否滯銷'}</th><th class="${th}">標籤</th></tr></thead><tbody>`;
+        rows.forEach(r => {
+          const last = isDead
+            ? (r.cover == null ? '<span class="text-red-500">無銷量</span>' : r.cover + ' 天')
+            : (r.dead ? '<span class="text-red-500 font-semibold">是</span>' : '否');
+          const tags = [r.qj ? '過季' : '', r.custom ? '訂製' : ''].filter(Boolean).join('・') || '—';
+          h += `<tr><td class="${td} text-left">${r.name}<div class="text-xs text-gray-400">${r.code}</div></td>
+            <td class="${td} text-left text-xs text-gray-500">${[r.style, r.size].filter(Boolean).join(' / ')}</td>
+            <td class="${td}">${r.days}</td><td class="${td}">${r.inv}</td>
+            <td class="${td} font-semibold">${_pf(r.cost)}</td>
+            <td class="${td}">${last}</td>
+            <td class="${td} text-xs text-gray-500">${tags}</td></tr>`;
+        });
+      }
+      if (!rows.length) h += `<tr><td colspan="7" class="px-3 py-6 text-center text-gray-400">此月份沒有資料</td></tr>`;
+      document.getElementById('listTable').innerHTML = h + '</tbody>';
+      const total = rows.reduce((a, r) => a + (perfListKind === 'margin' ? r.rev : r.cost), 0);
+      document.getElementById('listCount').textContent =
+        `${rows.length} 筆　合計 ${_pf(total)}`;
     }
 
     async function initPerfTab() {

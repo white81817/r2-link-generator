@@ -39,8 +39,8 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-28-combos-v4',
-  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan'],
+  version: '2026-08-31-ads-snapshot-v1',
+  features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot'],
   timestamp: new Date().toISOString(),
 }));
 
@@ -1480,6 +1480,153 @@ app.delete('/api/performance', async (c) => {
   await c.env.CACHE.put(PERF_KEY, JSON.stringify(all));
   return c.json({ ok: true, total: Object.keys(all.months).length });
 });
+
+// ── 庫存快照（每月 10/20/30 號上傳，供平均庫存分母與呆貨走勢用）──────────────
+// POST /api/performance/snapshot  body: { date:'2026-08-20', age_th, rows:{ Peter:{...}, ... } }
+app.post('/api/performance/snapshot', async (c) => {
+  const auth = validatePerfToken(c.req.header('X-Perf-Token'), c.env);
+  if (!auth || auth.role !== 'owner') return c.json({ error: '未授權（需老闆通行碼）' }, 401);
+
+  let body;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: '無法解析 JSON' }, 400); }
+  const date = String(body.date || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ error: 'date 需為 YYYY-MM-DD' }, 400);
+  if (!body.rows || typeof body.rows !== 'object') return c.json({ error: '缺少 rows' }, 400);
+
+  const all = await readPerf(c.env);
+  if (!all.snapshots) all.snapshots = {};
+  all.snapshots[date] = body.rows;
+  if (body.age_th) all.age_th = Number(body.age_th) || 60;
+
+  // 只保留最近 60 筆快照，避免無限成長
+  const keys = Object.keys(all.snapshots).sort();
+  if (keys.length > 60) keys.slice(0, keys.length - 60).forEach(k => delete all.snapshots[k]);
+
+  await c.env.CACHE.put(PERF_KEY, JSON.stringify(all));
+  return c.json({ ok: true, date, total: Object.keys(all.snapshots).length });
+});
+
+// ── Meta 廣告即時抓取 ─────────────────────────────────────────────────────────
+// GET /api/ads?month=2026-08  → 各 PM 當月廣告花費（共用獨立一筆，不分攤）
+// 需要 Cloudflare secret：META_ADS_TOKEN（系統使用者權杖，權限 ads_read）
+// 歸屬規則：活動名稱含 PM 名 → 該 PM；廣告編號在名單內 → 該 PM；其餘 → 共用。
+const ADS_ACCOUNTS = [
+  { id: '1121642359439067', name: '台灣迪品',        cur: 'TWD' },
+  { id: '1214706415596456', name: 'ColorFan',        cur: 'TWD' },
+  { id: '261679725511704',  name: 'jones-coloefan',  cur: 'TWD' },
+  { id: '924958168262497',  name: 'SHANER',          cur: 'TWD' },
+  { id: '341970654114966',  name: 'suddensleep',     cur: 'TWD' },
+  { id: '999450340629571',  name: 'jones',           cur: 'TWD' },
+  { id: '2098863870567244', name: '社群行銷',        cur: 'TWD' },
+  { id: '2034121714024854', name: 'SHANER大爆賣',    cur: 'USD' },
+  { id: '1101617182125267', name: '社畜ColorFan大爆賣', cur: 'USD' },
+  { id: '911086531288099',  name: '宅人大爆賣二代',  cur: 'USD' },
+];
+
+// 指定歸屬的廣告編號（活動名稱沒有人名時，用這份名單認人）
+const ADS_ID_OWNER = {};
+{
+  const m = {
+    Kai: `120225904834940068 120225904834910068 120225904834890068 120225904834950068
+          120225904835000068 120225904834960068 120225904834980068 120225904834900068`,
+    Peter: `120216283531540068 120216283531630068 120225904835140068 120225904835020068
+          120225904835120068 120225904834920068 120225904835060068 120225904835100068
+          120225904834810068 120225904835070068 120225904835030068 120225904835110068
+          120225904835230068 120225904835220068 120225904835050068 120225904835200068
+          120225904835080068 120225904834830068 120225904834870068 120225904834820068
+          120225904835090068 120225904835160068 120225904835180068 120225904835210068
+          120225904835170068 120225904835190068 120225904834880068`,
+    Yuki: `120225904835040068 120225904835010068 120225904834990068 120225904834840068
+          120225904835150068 120225904835130068 120216283531520068 120216283531470068
+          120216283531450068`,
+    Patty: `120225904834970068 120216283531580068 120216283531550068 120216283531610068
+          120216283531480068 120216283531370068 120216283531490068 120216283531500068
+          120216283531380068 120216283531410068 120216283531330068 120216283531420068
+          120216283531360068 120216283531560068 120216283531460068 120216283531400068
+          120216283531430068 120216283531590068 120216283531390068 120216283531350068
+          120216283531620068 120216283531570068 120216283531530068 120216283531510068`,
+  };
+  for (const [pm, s] of Object.entries(m)) {
+    s.split(/\s+/).filter(Boolean).forEach(id => { ADS_ID_OWNER[id] = pm; });
+  }
+}
+
+function adsOwnerOf(adId, campaignName) {
+  const n = String(campaignName || '');
+  for (const pm of PERF_PMS) {
+    if (n.includes(pm)) return pm;          // 活動名稱含人名優先
+  }
+  return ADS_ID_OWNER[String(adId)] || null; // 再看廣告編號名單；都沒有就是共用
+}
+
+app.get('/api/ads', async (c) => {
+  const auth = validatePerfToken(c.req.header('X-Perf-Token'), c.env);
+  if (!auth) return c.json({ error: '未授權' }, 401);
+  if (!c.env.META_ADS_TOKEN) return c.json({ error: '尚未設定 META_ADS_TOKEN' }, 500);
+
+  const month = (c.req.query('month') || '').match(/^\d{4}-\d{2}$/)
+    ? c.req.query('month')
+    : new Date().toISOString().slice(0, 7);
+  const since = `${month}-01`;
+  const until = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)
+    .toISOString().slice(0, 10);
+
+  const cacheKey = `ads:${month}`;
+  const cached = await c.env.CACHE.get(cacheKey);
+  if (cached && !c.req.query('refresh')) {
+    const v = JSON.parse(cached);
+    return c.json(auth.role === 'pm' ? adsForPm(v, auth.pm) : { ...v, cached: true });
+  }
+
+  const rate = Number(c.env.USD_TWD_RATE || 31.95);   // 可用 secret 覆寫匯率
+  const rows = {}; PERF_PMS.forEach(p => { rows[p] = 0; });
+  let shared = 0;
+  const accounts = [];
+  const errors = [];
+
+  for (const acc of ADS_ACCOUNTS) {
+    const url = `https://graph.facebook.com/v21.0/act_${acc.id}/insights`
+      + `?level=ad&fields=ad_id,campaign_name,spend`
+      + `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`
+      + `&limit=500&access_token=${encodeURIComponent(c.env.META_ADS_TOKEN)}`;
+    try {
+      const r = await fetch(url);
+      const j = await r.json();
+      if (j.error) { errors.push(`${acc.name}: ${j.error.message}`); continue; }
+      let accTotal = 0;
+      for (const row of (j.data || [])) {
+        const spend = Number(row.spend || 0) * (acc.cur === 'USD' ? rate : 1);
+        accTotal += spend;
+        const pm = adsOwnerOf(row.ad_id, row.campaign_name);
+        if (pm) rows[pm] += spend; else shared += spend;
+      }
+      accounts.push({ name: acc.name, cur: acc.cur, spend: Math.round(accTotal) });
+    } catch (e) {
+      errors.push(`${acc.name}: ${e.message}`);
+    }
+  }
+
+  const payload = {
+    month, since, until, rate,
+    personal: Object.fromEntries(Object.entries(rows).map(([k, v]) => [k, Math.round(v)])),
+    shared: Math.round(shared),
+    total: Math.round(Object.values(rows).reduce((a, b) => a + b, 0) + shared),
+    accounts, errors,
+    fetched: new Date().toISOString().slice(0, 16).replace('T', ' '),
+  };
+  await c.env.CACHE.put(cacheKey, JSON.stringify(payload), { expirationTtl: 3600 }); // 快取 1 小時
+  return c.json(auth.role === 'pm' ? adsForPm(payload, auth.pm) : payload);
+});
+
+// PM 只看自己的個人廣告費與共用總額，看不到別人的數字與帳號明細
+function adsForPm(v, pm) {
+  return {
+    month: v.month, since: v.since, until: v.until, fetched: v.fetched,
+    personal: { [pm]: v.personal[pm] || 0 },
+    shared: v.shared,
+  };
+}
 
 // ── Fetch handler：外層 wrapper 確保 CORS 覆蓋所有 response ─────────────────
 export default {
