@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-31-dashboard-v2',
+  version: '2026-08-31-ads-conv-v3',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot'],
   timestamp: new Date().toISOString(),
 }));
@@ -1580,51 +1580,68 @@ app.get('/api/ads', async (c) => {
   }
 
   const rate = Number(c.env.USD_TWD_RATE || 31.95);   // 可用 secret 覆寫匯率
-  const rows = {}; PERF_PMS.forEach(p => { rows[p] = 0; });
-  let shared = 0;
-  const accounts = [];
+  const rows = {}, conv = {};
+  PERF_PMS.forEach(p => { rows[p] = 0; conv[p] = 0; });
+  let shared = 0, sharedConv = 0;
   const errors = [];
+
+  // 從 action_values 取購買轉換值；omni_purchase 已含跨裝置，優先用它，避免重複計算
+  const PURCHASE_TYPES = ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'];
+  function purchaseValue(av) {
+    if (!Array.isArray(av)) return 0;
+    for (const t of PURCHASE_TYPES) {
+      const hit = av.find(x => x.action_type === t);
+      if (hit) return Number(hit.value || 0);
+    }
+    return 0;
+  }
 
   for (const acc of ADS_ACCOUNTS) {
     const url = `https://graph.facebook.com/v21.0/act_${acc.id}/insights`
-      + `?level=ad&fields=ad_id,campaign_name,spend`
+      + `?level=ad&fields=ad_id,campaign_name,spend,action_values`
       + `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`
       + `&limit=500&access_token=${encodeURIComponent(c.env.META_ADS_TOKEN)}`;
     try {
       const r = await fetch(url);
       const j = await r.json();
       if (j.error) { errors.push(`${acc.name}: ${j.error.message}`); continue; }
-      let accTotal = 0;
+      const fx = acc.cur === 'USD' ? rate : 1;
       for (const row of (j.data || [])) {
-        const spend = Number(row.spend || 0) * (acc.cur === 'USD' ? rate : 1);
-        accTotal += spend;
+        const spend = Number(row.spend || 0) * fx;
+        const cv = purchaseValue(row.action_values) * fx;
         const pm = adsOwnerOf(row.ad_id, row.campaign_name);
-        if (pm) rows[pm] += spend; else shared += spend;
+        if (pm) { rows[pm] += spend; conv[pm] += cv; }
+        else { shared += spend; sharedConv += cv; }
       }
-      accounts.push({ name: acc.name, cur: acc.cur, spend: Math.round(accTotal) });
     } catch (e) {
       errors.push(`${acc.name}: ${e.message}`);
     }
   }
 
+  const totalSpend = Object.values(rows).reduce((a, b) => a + b, 0) + shared;
+  const totalConv = Object.values(conv).reduce((a, b) => a + b, 0) + sharedConv;
   const payload = {
     month, since, until, rate,
     personal: Object.fromEntries(Object.entries(rows).map(([k, v]) => [k, Math.round(v)])),
+    conv: Object.fromEntries(Object.entries(conv).map(([k, v]) => [k, Math.round(v)])),
     shared: Math.round(shared),
-    total: Math.round(Object.values(rows).reduce((a, b) => a + b, 0) + shared),
-    accounts, errors,
+    sharedConv: Math.round(sharedConv),
+    total: Math.round(totalSpend),
+    totalConv: Math.round(totalConv),
+    errors,
     fetched: new Date().toISOString().slice(0, 16).replace('T', ' '),
   };
   await c.env.CACHE.put(cacheKey, JSON.stringify(payload), { expirationTtl: 3600 }); // 快取 1 小時
   return c.json(auth.role === 'pm' ? adsForPm(payload, auth.pm) : payload);
 });
 
-// PM 只看自己的個人廣告費與共用總額，看不到別人的數字與帳號明細
+// PM 只看自己的廣告花費與轉換值，加上共用總額；看不到別人的數字
 function adsForPm(v, pm) {
   return {
     month: v.month, since: v.since, until: v.until, fetched: v.fetched,
     personal: { [pm]: v.personal[pm] || 0 },
-    shared: v.shared,
+    conv: { [pm]: (v.conv && v.conv[pm]) || 0 },
+    shared: v.shared, sharedConv: v.sharedConv,
   };
 }
 

@@ -7545,8 +7545,9 @@ ${co.bank?`<div class="bank">
       </div>
 
       <div class="bg-white rounded-xl border border-gray-200 p-4 mb-3">
-        <div class="flex items-center gap-2 mb-3">
-          <h4 class="text-sm font-semibold text-gray-700">📣 廣告花費（當月累積）</h4>
+        <div class="flex items-center gap-2 mb-3 flex-wrap">
+          <h4 class="text-sm font-semibold text-gray-700">📣 廣告花費與轉換</h4>
+          <select id="adsMonth" class="border border-gray-300 rounded px-2 py-1 text-xs"></select>
           <span id="adsMeta" class="text-xs text-gray-400"></span>
           <div class="flex-1"></div>
           <button onclick="loadAds(true)" class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-50">重新抓取</button>
@@ -7779,12 +7780,15 @@ ${co.bank?`<div class="bank">
         <th class="${th}">└ 呆貨</th><th class="${th}">└ 老但賣得動</th><th class="${th}">└ 過季轉換品</th>
         <th class="${th}">新貨</th><th class="${th}">滯銷率</th></tr></thead><tbody>`;
       pms.forEach(p => {
-        const c = cur[p], iv = inv[p];
+        const c = cur[p], iv = inv[p], ivq = pv ? invPrev[p] : null, q = prev ? prev[p] : null;
         html += `<tr><td class="${td} text-left font-medium">${p}</td>
-          <td class="${td}">${_pf(c.inv)}</td><td class="${td}">${_pf(iv.aged)}</td>
-          <td class="${td}">${_pf(iv.dead)}</td><td class="${td}">${_pf(c.alive)}</td>
+          <td class="${td}">${_pf(c.inv)} ${_pdelta(c.inv, q && q.inv, false)}</td>
+          <td class="${td}">${_pf(iv.aged)} ${_pdelta(iv.aged, ivq && ivq.aged, false)}</td>
+          <td class="${td}">${_pf(iv.dead)} ${_pdelta(iv.dead, ivq && ivq.dead, false)}</td>
+          <td class="${td}">${_pf(c.alive)}</td>
           <td class="${td}">${_pf(c.qj)}</td><td class="${td}">${_pf(c.inv - c.old)}</td>
-          <td class="${td}">${_pp(iv.slowrate)}</td></tr>`;
+          <td class="${td}">${_pp(iv.slowrate)}${ivq && ivq.slowrate != null
+            ? `<div class="text-xs text-gray-400">上期 ${_pp(ivq.slowrate)}</div>` : ''}</td></tr>`;
       });
       if (pms.length > 1) {
         const t = k => pms.reduce((a, p) => a + (cur[p][k] || 0), 0);
@@ -7801,7 +7805,8 @@ ${co.bank?`<div class="bank">
     // ── 廣告即時花費（Meta，後端快取1小時）──────────────────────────────
     async function loadAds(refresh) {
       const box = document.getElementById('adsBox');
-      const m = document.getElementById('perfMonth').value || '';
+      perfInitAdsMonths();
+      const m = document.getElementById('adsMonth').value || '';
       box.innerHTML = '<span class="text-gray-400">抓取中…</span>';
       const q = '/api/ads' + (m ? `?month=${m}` : '') + (refresh ? (m ? '&' : '?') + 'refresh=1' : '');
       const { ok, data } = await perfApi(q);
@@ -7810,32 +7815,81 @@ ${co.bank?`<div class="bank">
         document.getElementById('adsMeta').textContent = '';
         return;
       }
-      const pms = Object.keys(data.personal || {});
-      const cell = (lb, v, cls) => `<div class="border border-gray-100 rounded-lg p-3">
-          <div class="text-xs text-gray-500 mb-1">${lb}</div>
-          <div class="text-lg font-bold ${cls || 'text-gray-800'}">${_pf(v)}</div></div>`;
-      let html = '<div class="grid grid-cols-2 md:grid-cols-5 gap-2">';
-      pms.forEach(p => { html += cell(p, data.personal[p]); });
-      html += cell('共用（未分攤）', data.shared, 'text-yellow-700');
-      html += '</div>';
-      if (data.total != null) {
-        html += `<div class="text-xs text-gray-500 mt-2">合計 ${_pf(data.total)}`
-              + (data.rate ? `　·　美金帳號以 ${data.rate} 換算台幣` : '') + '</div>';
+      // 同時抓上個月做比較（失敗就不比，不影響主要顯示）
+      let prevAds = null;
+      if (m) {
+        const [py, pmn] = m.split('-').map(Number);
+        const pd = new Date(py, pmn - 2, 1);
+        const pmStr = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+        const r2 = await perfApi(`/api/ads?month=${pmStr}`);
+        if (r2.ok) prevAds = r2.data;
       }
-      if (data.accounts && data.accounts.length) {
-        html += '<details class="mt-2"><summary class="text-xs text-gray-500 cursor-pointer">各廣告帳號明細</summary>'
-              + '<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2">'
-              + data.accounts.map(a => `<div class="text-xs border border-gray-100 rounded p-2">
-                  <div class="text-gray-500">${a.name}<span class="text-gray-300">(${a.cur})</span></div>
-                  <div class="font-semibold">${_pf(a.spend)}</div></div>`).join('')
-              + '</div></details>';
+      const pms = Object.keys(data.personal || {});
+      const cv = data.conv || {};
+      const th = 'px-3 py-2 text-right text-xs font-semibold text-gray-500 bg-gray-50';
+      const td = 'px-3 py-2 text-right border-b border-gray-100';
+      const roasCell = (c, s) => {
+        if (!s) return '<span class="text-gray-300">—</span>';
+        const r = c / s;
+        const cls = r >= 3 ? 'text-green-600' : (r >= 1.5 ? 'text-yellow-600' : 'text-red-500');
+        return `<span class="font-semibold ${cls}">${r.toFixed(2)}</span>`;
+      };
+      const pcv = (prevAds && prevAds.conv) || {};
+      const pper = (prevAds && prevAds.personal) || {};
+      // 廣告花費變多不必然是壞事，所以花費不上色（只顯示幅度）；轉換值與 ROAS 越高越好
+      const plain = (cur, prv) => {
+        if (!prevAds || prv == null || prv === 0) return '';
+        const d = (cur - prv) / Math.abs(prv);
+        return `<span class="text-xs text-gray-500 ml-1">${d > 0 ? '+' : ''}${(d * 100).toFixed(0)}%</span>`;
+      };
+      let html = `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead><tr><th class="${th} text-left">歸屬</th><th class="${th}">廣告花費</th>
+        <th class="${th}">轉換值</th><th class="${th}">ROAS</th>${prevAds ? `<th class="${th}">上月ROAS</th>` : ''}</tr></thead><tbody>`;
+      pms.forEach(p => {
+        const pr = (pper[p] ? (pcv[p] || 0) / pper[p] : null);
+        html += `<tr><td class="${td} text-left font-medium">${p}</td>
+          <td class="${td}">${_pf(data.personal[p])}${plain(data.personal[p] || 0, pper[p])}</td>
+          <td class="${td}">${_pf(cv[p])}${plain(cv[p] || 0, pcv[p])}</td>
+          <td class="${td}">${roasCell(cv[p] || 0, data.personal[p] || 0)}</td>
+          ${prevAds ? `<td class="${td} text-gray-400">${pr == null ? '—' : pr.toFixed(2)}</td>` : ''}</tr>`;
+      });
+      const psr = (prevAds && prevAds.shared) ? (prevAds.sharedConv || 0) / prevAds.shared : null;
+      html += `<tr class="bg-yellow-50"><td class="${td} text-left font-medium text-yellow-800">共用（未分攤）</td>
+        <td class="${td}">${_pf(data.shared)}${plain(data.shared || 0, prevAds && prevAds.shared)}</td>
+        <td class="${td}">${_pf(data.sharedConv)}${plain(data.sharedConv || 0, prevAds && prevAds.sharedConv)}</td>
+        <td class="${td}">${roasCell(data.sharedConv || 0, data.shared || 0)}</td>
+        ${prevAds ? `<td class="${td} text-gray-400">${psr == null ? '—' : psr.toFixed(2)}</td>` : ''}</tr>`;
+      if (data.total != null) {
+        const ptr = (prevAds && prevAds.total) ? (prevAds.totalConv || 0) / prevAds.total : null;
+        html += `<tr class="bg-gray-50 font-semibold"><td class="${td} text-left">合計</td>
+          <td class="${td}">${_pf(data.total)}${plain(data.total || 0, prevAds && prevAds.total)}</td>
+          <td class="${td}">${_pf(data.totalConv)}${plain(data.totalConv || 0, prevAds && prevAds.totalConv)}</td>
+          <td class="${td}">${roasCell(data.totalConv || 0, data.total || 0)}</td>
+          ${prevAds ? `<td class="${td} text-gray-400">${ptr == null ? '—' : ptr.toFixed(2)}</td>` : ''}</tr>`;
+      }
+      html += '</tbody></table></div>';
+      if (prevAds) html += `<div class="text-xs text-gray-400 mt-1">百分比與「上月ROAS」為對照 ${prevAds.month}</div>`;
+      if (data.rate) {
+        html += `<div class="text-xs text-gray-400 mt-2">美金帳號以 ${data.rate} 換算台幣　·　轉換值取 Meta 的購買轉換價值（omni_purchase）</div>`;
       }
       if (data.errors && data.errors.length) {
         html += `<div class="text-xs text-red-500 mt-2">部分帳號讀取失敗：${data.errors.join('；')}</div>`;
       }
       box.innerHTML = html;
-      document.getElementById('adsMeta').textContent =
-        `${data.month || ''}　更新於 ${data.fetched || '—'}`;
+      document.getElementById('adsMeta').textContent = `更新於 ${data.fetched || '—'}`;
+    }
+
+    function perfInitAdsMonths() {
+      const sel = document.getElementById('adsMonth');
+      if (sel.options.length) return;
+      const now = new Date(), opts = [];
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      }
+      sel.innerHTML = opts.map(m => `<option>${m}</option>`).join('');
+      sel.value = opts[0];                       // 預設當月
+      sel.onchange = () => loadAds();
     }
 
     // ── 庫存指標：用快照計算（毛利月 M 對照庫存月 M+1）──────────────────
