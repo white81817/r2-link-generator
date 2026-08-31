@@ -7718,7 +7718,7 @@ ${co.bank?`<div class="bank">
       <div id="perfCards"  class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"></div>
 
       <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">庫存健康明細</h3>
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">庫存健康摘要</h3>
         <div class="overflow-x-auto"><table id="perfTable" class="w-full text-sm"></table></div>
         <p class="text-xs text-gray-400 mt-3 leading-relaxed">
           <b>呆貨(滯銷)</b>＝帳齡&gt;60天 <u>且</u> 賣不掉（覆蓋天數&gt;90天／訂製&gt;180天），已排除過季轉換品。
@@ -7860,13 +7860,16 @@ ${co.bank?`<div class="bank">
         if (pv) invPrev[p] = perfInventoryFor(pv, p);
       });
       const anySnap = pms.some(p => inv[p].src === 'snapshot');
-      const im = perfNextMonth(m);
+      const noInv = pms.every(p => inv[p].src === 'none');
+      const iv0 = inv[pms[0]] || {};
       document.getElementById('periodNote').innerHTML =
         `<span class="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold">毛利期間 ${m}（上個月）</span>`
-        + `<span class="ml-2 text-gray-500">庫存期間 ${im}</span>`
+        + `<span class="ml-2 text-gray-500">庫存期間 ${iv0.from || '—'} ～ ${iv0.to || '—'}</span>`
         + (anySnap
-            ? `<span class="ml-2 text-green-600">滯銷率＝${im}-20 呆貨 ÷ 1/10/20 三份平均庫存</span>`
-            : `<span class="ml-2 text-yellow-600">尚無 ${im} 快照，暫用月報自帶庫存數字</span>`);
+            ? `<span class="ml-2 text-green-600">滯銷率＝期間末呆貨 ÷ 期間內平均庫存</span>`
+            : noInv
+              ? `<span class="ml-2 text-red-500">此期間尚無庫存快照，滯銷率無法計算</span>`
+              : `<span class="ml-2 text-yellow-600">此期間尚無快照，暫用月報自帶庫存數字</span>`);
 
       const sum = (o, k) => o ? pms.reduce((a, p) => a + ((o[p] && o[p][k]) || 0), 0) : null;
       const sumInv = (o, k) => pms.reduce((a, p) => a + ((o[p] && o[p][k]) || 0), 0);
@@ -7886,27 +7889,36 @@ ${co.bank?`<div class="bank">
       document.getElementById('perfCards').innerHTML = pms.map(p => {
         const c = cur[p], q = prev ? prev[p] : null;
         const iv = inv[p], ivq = pv ? invPrev[p] : null;
-        const sr = iv.slowrate || 0;
-        const dm = c.cogs ? iv.dead / c.cogs : (c.deadmonths || 0);
-        const tag = dm <= 1 ? '<span class="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">呆貨≤1月</span>'
+        const hasInv = iv.slowrate != null;
+        const sr = hasInv ? iv.slowrate : 0;
+        const dm = (hasInv && c.cogs) ? iv.dead / c.cogs : null;
+        const tag = dm == null ? ''
+                  : dm <= 1 ? '<span class="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">呆貨≤1月</span>'
                   : (dm > 3 ? '<span class="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600">呆貨&gt;3月</span>' : '');
         const w = Math.min(sr * 100, 100);
         const col = sr >= .5 ? 'bg-red-500' : (sr >= .3 ? 'bg-yellow-500' : 'bg-green-500');
         const row = (lb, v, d) => `<div class="flex justify-between py-1.5 border-b border-gray-50 text-sm">
             <span class="text-gray-500">${lb}</span><span class="font-medium">${v} ${d || ''}</span></div>`;
         const srNote = iv.src === 'snapshot'
-          ? `<span class="text-xs text-gray-400">（${iv.dates.length}/3 份快照）</span>` : '';
+          ? `<span class="text-xs text-gray-400">（${iv.dates.length} 份快照平均）</span>`
+          : (iv.src === 'none' ? '' : '<span class="text-xs text-gray-400">（月報值）</span>');
+        // 期間後動向：庫存期間結束後呆貨怎麼變，只是參考，不動結算數字
+        const afterRow = (iv.after && iv.dead)
+          ? `<div class="flex justify-between py-1.5 text-xs mt-1 bg-gray-50 rounded px-2">
+               <span class="text-gray-500">期間後動向（至 ${iv.after.date}）</span>
+               <span>${_pf(iv.after.dead)} ${_pdelta(iv.after.dead, iv.dead, false)}</span></div>` : '';
         return `<div class="bg-white rounded-xl border border-gray-200 p-4">
           <div class="flex items-center gap-2 mb-3"><span class="text-lg font-bold text-gray-800">${p}</span>${tag}</div>
           ${row('業績', _pf(c.rev), _pdelta(c.rev, q && q.rev, true))}
           ${row('最終貢獻毛利', _pf(c.final), _pdelta(c.final, q && q.final, true))}
           ${row('最終毛利率', _pp(c.rate))}
           ${row('官網廣告費', _pf(c.adgw))}
-          ${row('呆貨金額', _pf(iv.dead), _pdelta(iv.dead, ivq && ivq.dead, false))}
-          ${row('長庫齡貨款', _pf(iv.aged), _pdelta(iv.aged, ivq && ivq.aged, false))}
-          ${row('呆貨=幾個月銷貨', dm.toFixed(2) + ' 月')}
-          ${row('滯銷率' + srNote, _pp(sr))}
+          ${row('呆貨金額', hasInv ? _pf(iv.dead) : '—', hasInv ? _pdelta(iv.dead, ivq && ivq.dead, false) : '')}
+          ${row('長庫齡貨款', hasInv ? _pf(iv.aged) : '—', hasInv ? _pdelta(iv.aged, ivq && ivq.aged, false) : '')}
+          ${row('呆貨=幾個月銷貨', dm == null ? '—' : dm.toFixed(2) + ' 月')}
+          ${row('滯銷率' + srNote, hasInv ? _pp(sr) : '<span class="text-gray-400">尚無庫存資料</span>')}
           <div class="h-1.5 rounded bg-gray-100 overflow-hidden mt-2"><div class="h-full ${col}" style="width:${w}%"></div></div>
+          ${afterRow}
         </div>`;
       }).join('');
 
@@ -8040,27 +8052,47 @@ ${co.bank?`<div class="bank">
       const d = new Date(y, m, 1);   // m 已是下個月（Date 月份從 0 起算）
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     }
+    function perfPrevMonth(ym) {
+      const [y, m] = ym.split('-').map(Number);
+      const d = new Date(y, m - 2, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
 
     function perfInventoryFor(month, pm) {
       const snaps = perfData.snapshots || {};
-      const im = perfNextMonth(month);                    // 庫存月
-      const want = ['01', '10', '20'].map(d => `${im}-${d}`);
-      const got = want.filter(d => snaps[d] && snaps[d][pm]);
+      const im = perfNextMonth(month);                    // 結算月（訂單資料到齊的月份）
+      // 庫存期間＝毛利月前一個月21號 ～ 毛利月20號，涵蓋「該月銷售期間手上的貨」。
+      // 用這段而不是月後，是「投入產出」的邏輯：給你這些貨，賣得如何、留下多少呆的。
+      // 若用月後庫存，賣得越好月後庫存越少、分母縮小，滯銷率反而變高＝懲罰賣得好的人。
+      // 分母＝區間內所有快照的總庫存平均；分子＝區間最後一天（通常是20號）的呆貨。
+      const from = `${perfPrevMonth(month)}-21`, to = `${month}-20`;
+      const got = Object.keys(snaps).filter(d =>
+        d >= from && d <= to && snaps[d] && snaps[d][pm]).sort();
       const fallback = (perfData.months[month] || {})[pm] || {};
 
       if (!got.length) {
-        return { slowrate: fallback.slowrate, dead: fallback.dead, aged: fallback.old,
-                 inv: fallback.invx, src: 'report', im, dates: [] };
+        // 沒有快照時不要顯示 0%（會被誤讀成「完全沒有呆貨」），標示為無資料
+        const has = fallback.invx != null && fallback.invx > 0;
+        return { slowrate: has ? fallback.slowrate : null,
+                 dead: has ? fallback.dead : null, aged: has ? fallback.old : null,
+                 inv: has ? fallback.invx : null,
+                 src: has ? 'report' : 'none', im, from, to, dates: [] };
       }
       const invs = got.map(d => snaps[d][pm].invx != null ? snaps[d][pm].invx : snaps[d][pm].inv);
       const denom = invs.reduce((a, b) => a + b, 0) / invs.length;
-      const last = got[got.length - 1];
-      const twentieth = snaps[`${im}-20`] && snaps[`${im}-20`][pm] ? `${im}-20` : last;
-      const dead = snaps[twentieth][pm].dead;
+      const cut = got[got.length - 1];                    // 分子：區間內最後一天（通常是20號）
+      const dead = snaps[cut][pm].dead;
+
+      // 期間後動向：庫存期間結束後到最新一筆的呆貨變化（僅供參考，不影響結算數字）
+      const after = Object.keys(snaps).filter(d => d > to && snaps[d] && snaps[d][pm]).sort();
+      const afterInfo = after.length
+        ? { date: after[after.length - 1], dead: snaps[after[after.length - 1]][pm].dead }
+        : null;
+
       return {
-        slowrate: denom ? dead / denom : 0,
-        dead, aged: snaps[last][pm].aged, inv: Math.round(denom),
-        src: 'snapshot', im, dates: got, numDate: twentieth, complete: got.length === 3,
+        slowrate: denom ? dead / denom : null,
+        dead, aged: snaps[cut][pm].aged, inv: Math.round(denom),
+        src: 'snapshot', im, from, to, dates: got, numDate: cut, after: afterInfo,
       };
     }
 
@@ -8107,7 +8139,7 @@ ${co.bank?`<div class="bank">
       pms.forEach(p => { h += `<th class="${th}">${p}<br><span class="font-normal text-gray-400">呆貨</span></th>`; });
       pms.forEach(p => { h += `<th class="${th}">${p}<br><span class="font-normal text-gray-400">長庫齡</span></th>`; });
       h += '</tr></thead><tbody>';
-      dates.slice(-12).forEach(d => {
+      dates.slice(-20).forEach(d => {
         h += `<tr><td class="${td} text-left font-medium">${d}</td>`;
         pms.forEach(p => { h += `<td class="${td}">${_pf(snaps[d][p] && snaps[d][p].dead)}</td>`; });
         pms.forEach(p => { h += `<td class="${td}">${_pf(snaps[d][p] && snaps[d][p].aged)}</td>`; });
@@ -8118,8 +8150,22 @@ ${co.bank?`<div class="bank">
 
     // ── 明細清單 ────────────────────────────────────────────────────────
     let perfListKind = 'margin';
+    // 各清單的預設排序（金額由大到小最常用）
+    const PERF_SORT_DEFAULT = { margin: { key: 'rev', dir: -1 },
+                                dead:   { key: 'cost', dir: -1 },
+                                aged:   { key: 'cost', dir: -1 } };
+    let perfListSort = { ...PERF_SORT_DEFAULT.margin };
+
+    function perfSortBy(key) {
+      // 點同一欄切換升冪／降冪；換欄則從降冪開始（文字欄從升冪）
+      if (perfListSort.key === key) perfListSort.dir *= -1;
+      else perfListSort = { key, dir: ['name', 'code', 'style', 'ch'].includes(key) ? 1 : -1 };
+      perfRenderList();
+    }
+
     function perfShowList(kind) {
       perfListKind = kind;
+      perfListSort = { ...PERF_SORT_DEFAULT[kind] };
       ['margin', 'dead', 'aged'].forEach(k => {
         const b = document.getElementById('lbtn-' + k);
         if (!b) return;
@@ -8140,14 +8186,32 @@ ${co.bank?`<div class="bank">
         pmSel.onchange = perfRenderList;
       }
       const pm = pmSel.value || pms[0];
-      const rows = ((cur[pm] || {}).lists || {})[perfListKind] || [];
+      const raw = ((cur[pm] || {}).lists || {})[perfListKind] || [];
+      // 依目前排序條件排（數字比大小，文字用 localeCompare）
+      const rows = raw.slice().sort((a, b) => {
+        const k = perfListSort.key, d = perfListSort.dir;
+        const va = a[k], vb = b[k];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;          // 空值一律排最後
+        if (vb == null) return -1;
+        return (typeof va === 'number' && typeof vb === 'number')
+          ? (va - vb) * d
+          : String(va).localeCompare(String(vb), 'zh-Hant') * d;
+      });
       const th = 'px-3 py-2 text-right text-xs font-semibold text-gray-500 bg-gray-50 sticky top-0';
       const td = 'px-3 py-2 text-right border-b border-gray-100';
+      // 可點擊排序的表頭
+      const sth = (label, key, align) => {
+        const on = perfListSort.key === key;
+        const arrow = on ? (perfListSort.dir === -1 ? ' ↓' : ' ↑') : '';
+        return `<th class="${th} ${align || ''} cursor-pointer select-none hover:bg-gray-100${on ? ' text-blue-700' : ''}"
+          onclick="perfSortBy('${key}')" title="點擊排序">${label}${arrow}</th>`;
+      };
       let h = '';
       if (perfListKind === 'margin') {
-        h = `<thead><tr><th class="${th} text-left">商品</th><th class="${th} text-left">樣式/尺寸</th>
-             <th class="${th}">通路</th><th class="${th}">數量</th><th class="${th}">銷售額</th>
-             <th class="${th}">基礎貢獻毛利</th><th class="${th}">毛利率</th></tr></thead><tbody>`;
+        h = `<thead><tr>${sth('商品', 'name', 'text-left')}${sth('樣式/尺寸', 'style', 'text-left')}
+             ${sth('通路', 'ch')}${sth('數量', 'qty')}${sth('銷售額', 'rev')}
+             ${sth('基礎貢獻毛利', 'gm')}${sth('毛利率', 'rate')}</tr></thead><tbody>`;
         rows.forEach(r => {
           const c = r.rate < 0.15 ? 'text-red-500' : (r.rate < 0.25 ? 'text-yellow-600' : 'text-green-600');
           h += `<tr><td class="${td} text-left">${r.name}<div class="text-xs text-gray-400">${r.code}</div></td>
@@ -8158,9 +8222,10 @@ ${co.bank?`<div class="bank">
         });
       } else {
         const isDead = perfListKind === 'dead';
-        h = `<thead><tr><th class="${th} text-left">商品</th><th class="${th} text-left">樣式/尺寸</th>
-             <th class="${th}">在庫天數</th><th class="${th}">庫存量</th><th class="${th}">貨款成本</th>
-             <th class="${th}">${isDead ? '覆蓋天數' : '是否滯銷'}</th><th class="${th}">標籤</th></tr></thead><tbody>`;
+        h = `<thead><tr>${sth('商品', 'name', 'text-left')}${sth('樣式/尺寸', 'style', 'text-left')}
+             ${sth('在庫天數', 'days')}${sth('庫存量', 'inv')}${sth('貨款成本', 'cost')}
+             ${isDead ? sth('覆蓋天數', 'cover') : sth('是否滯銷', 'dead')}
+             <th class="${th}">標籤</th></tr></thead><tbody>`;
         rows.forEach(r => {
           const last = isDead
             ? (r.cover == null ? '<span class="text-red-500">無銷量</span>' : r.cover + ' 天')

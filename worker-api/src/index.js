@@ -39,7 +39,7 @@ const app = new Hono();
 // version 用來確認自動部署是否生效：改版時一併更新，開 /api/health 即可比對
 app.get('/api/health', (c) => c.json({
   status: 'ok',
-  version: '2026-08-31-syncstock-v2',
+  version: '2026-08-31-syncstock-v4',
   features: ['erp', 'cache', 'quotes', 'products', '1688probe', '1688skudb', 'performance', '1688cartplan', 'ads', 'snapshot', 'combos', 'syncstock'],
   timestamp: new Date().toISOString(),
 }));
@@ -1615,9 +1615,9 @@ app.post('/api/performance/snapshot', async (c) => {
   all.snapshots[date] = body.rows;
   if (body.age_th) all.age_th = Number(body.age_th) || 60;
 
-  // 只保留最近 60 筆快照，避免無限成長
+  // 每日上傳時一年約 365 筆，保留 400 筆（約 13 個月）避免無限成長
   const keys = Object.keys(all.snapshots).sort();
-  if (keys.length > 60) keys.slice(0, keys.length - 60).forEach(k => delete all.snapshots[k]);
+  if (keys.length > 400) keys.slice(0, keys.length - 400).forEach(k => delete all.snapshots[k]);
 
   await c.env.CACHE.put(PERF_KEY, JSON.stringify(all));
   return c.json({ ok: true, date, total: Object.keys(all.snapshots).length });
