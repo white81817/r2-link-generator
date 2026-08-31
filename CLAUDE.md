@@ -297,14 +297,16 @@ didibox「🛒 1688 採購」分頁          1688 商品頁（Tampermonkey）
 
 ## 每日 USALE 同步
 
-同一份「商品列表.xlsx」有兩個用途，分開兩支腳本、兩個通行碼：
+同一份「商品列表.xlsx」餵給兩個系統，**兩支都是每天跑**，但通行碼與端點不同：
 
-| 腳本 | 頻率 | 通行碼 | 端點 |
+| 腳本 | 通行碼 | 端點 | 用途 |
 |---|---|---|---|
-| `tools/sync_stock.py` | 每天 | `QUOTE_TOKEN` | `/api/products/sync-stock` |
-| `snapshot_stock.py`（在本機的績效計算資料夾） | 每月 1／10／20 | `PERF_TOKEN` | `/api/performance/snapshot` |
+| `tools/sync_stock.py` | `QUOTE_TOKEN` | `/api/products/sync-stock` | 共用商品庫的庫存與銷售模式 |
+| `snapshot_stock.py`（本機績效計算資料夾） | `PERF_TOKEN` | `/api/performance/snapshot` | 績效儀表板的庫存快照 |
 
-`tools/daily_usale.sh` 一次跑完兩支，非 1／10／20 會自動略過快照。
+`tools/daily_usale.sh` 一次跑完兩支。**兩支互不影響**——其中一支失敗另一支照跑，
+最後才回報整體結果並以非 0 離開，讓排程看得出出事了。
+會擋「檔案超過 24 小時」（多半是當天沒抓成功，拿舊資料覆蓋庫存比不跑更糟）。
 
 ```bash
 read -s QUOTE_TOKEN && export QUOTE_TOKEN
@@ -317,6 +319,9 @@ python3 tools/sync_stock.py 商品列表.xlsx
 - 同步只寫 `usaleStock` / `usaleSalesMode`，**不碰可編輯的 `stock` / `salesMode`**——
   後者是上架時要送出去的值，覆蓋掉會把同仁調好的東西殺掉。
 - 欄位名稱靠候選清單比對（完全相同優先，再比開頭），USALE 的欄位常帶括號說明。
+- 取檔案時間的相容寫法**順序不能顛倒**：`stat -c %Y`（GNU）要放在
+  `stat -f %m`（BSD/macOS）前面。Linux 的 `stat -f` 是「檔案系統資訊」會成功回傳，
+  放前面的話 fallback 永遠不會觸發，算出來的時間是垃圾。
 
 ## 開發注意事項
 
