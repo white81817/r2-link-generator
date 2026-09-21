@@ -323,6 +323,39 @@ python3 tools/sync_stock.py 商品列表.xlsx
   `stat -f %m`（BSD/macOS）前面。Linux 的 `stat -f` 是「檔案系統資訊」會成功回傳，
   放前面的話 fallback 永遠不會觸發，算出來的時間是垃圾。
 
+## 每月 PM 績效月報
+
+用 `monthly-pm-report-v2` 技能算，但**技能只產 Excel，不會進儀表板**。
+儀表板的數字散在三個地方，寫入者各不相同：
+
+| 儀表板區塊 | KV | 誰寫 | 頻率 |
+|---|---|---|---|
+| 廣告花費 | 不存，`/api/ads` 即時打 Meta | — | 即時 |
+| 呆貨／長庫齡／滯銷走勢 | `perf:data.snapshots` | `snapshot_stock.py` | 每天 |
+| 業績／貢獻毛利／毛利率／明細 | `perf:data.months` | `tools/upload_perf.py` | 每月 |
+
+```bash
+# 1. 算（雲端或本機都行）
+python3 <skill>/references/calc_script.py 商品列表.xlsx 訂單明細.csv out/ \
+    --ad-personal Peter=…,Yuki=…,Kai=…,Patty=… --ad-shared <Meta共用+Google>
+python3 <skill>/references/build_report.py out/
+
+# 2. 推上儀表板（要有網路 + 老闆通行碼）
+read -s PERF_TOKEN && export PERF_TOKEN
+python3 tools/upload_perf.py out/ --month 2026-08 --dry
+python3 tools/upload_perf.py out/ --month 2026-08
+# 沒有 pandas 的機器：先 --save-json 再用 curl --data-binary 送
+```
+
+- `POST /api/performance` 只收**老闆通行碼**，PM 個人通行碼（PW_*）沒有寫入權限。
+- 官網廣告費 = Meta（儀表板廣告區塊的四個人名＋共用）＋ Google，Google 全部進共用；
+  共用再依各 PM **官網業績**比例分攤。這五個數字每月要人工帶進 `--ad-personal/--ad-shared`。
+- **`upload_perf.py` 的庫存金額有乘匯率**（比照 `snapshot_stock.py`），
+  Excel 報表的滯銷率則是用未乘匯率的批價值，兩者會差 1% 上下，不是 bug。
+  儀表板本來就優先採用每日快照，`upload_perf.py` 送的庫存欄位只是「完全沒快照」時的退路。
+- PM 歸屬靠商品標籤認人，**沒有 PM 標籤的商品整筆不列入任何人的業績**。
+  跑之前先看腳本回報的「對不到 PM」金額，該補標籤就補。
+
 ## 開發注意事項
 
 - 修改 `index.html` 後的語法檢查（**必須連「全部區塊串起來」一起檢查**——
