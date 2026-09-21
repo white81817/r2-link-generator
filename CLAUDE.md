@@ -325,36 +325,51 @@ python3 tools/sync_stock.py 商品列表.xlsx
 
 ## 每月 PM 績效月報
 
-用 `monthly-pm-report-v2` 技能算，但**技能只產 Excel，不會進儀表板**。
+**正式流程是使用者本機的「PM月報一鍵執行.command」**，不是這個 repo 裡的東西。
+雙擊後互動式問月份、五個廣告費數字、老闆通行碼，接著一路跑完：
+
+```
+輸入資料/<年-月>/  放 商品列表.xlsx + 訂單明細.csv
+   ↓
+calc_script.py            算貢獻毛利與庫存指標      → work/<年-月>/
+build_report.py           產總表 Excel
+build_split.py  × 4       拆四位 PM 個人版
+build_dashboard_data.py   轉成儀表板要的 JSON
+upload_performance.py     POST /api/performance     → KV: perf:data.months
+```
+
+報表檔名用**結算月**（毛利月 +1）：毛利 2026-08 → `2026-09結算_毛利8月_...`，與儀表板一致。
+上傳失敗可單獨跑「上傳儀表板.command」重試，不必重算。
+
 儀表板的數字散在三個地方，寫入者各不相同：
 
 | 儀表板區塊 | KV | 誰寫 | 頻率 |
 |---|---|---|---|
 | 廣告花費 | 不存，`/api/ads` 即時打 Meta | — | 即時 |
 | 呆貨／長庫齡／滯銷走勢 | `perf:data.snapshots` | `snapshot_stock.py` | 每天 |
-| 業績／貢獻毛利／毛利率／明細 | `perf:data.months` | `tools/upload_perf.py` | 每月 |
-
-```bash
-# 1. 算（雲端或本機都行）
-python3 <skill>/references/calc_script.py 商品列表.xlsx 訂單明細.csv out/ \
-    --ad-personal Peter=…,Yuki=…,Kai=…,Patty=… --ad-shared <Meta共用+Google>
-python3 <skill>/references/build_report.py out/
-
-# 2. 推上儀表板（要有網路 + 老闆通行碼）
-read -s PERF_TOKEN && export PERF_TOKEN
-python3 tools/upload_perf.py out/ --month 2026-08 --dry
-python3 tools/upload_perf.py out/ --month 2026-08
-# 沒有 pandas 的機器：先 --save-json 再用 curl --data-binary 送
-```
+| 業績／貢獻毛利／毛利率／明細 | `perf:data.months` | `upload_performance.py`（.command 第 4 步） | 每月 |
 
 - `POST /api/performance` 只收**老闆通行碼**，PM 個人通行碼（PW_*）沒有寫入權限。
 - 官網廣告費 = Meta（儀表板廣告區塊的四個人名＋共用）＋ Google，Google 全部進共用；
-  共用再依各 PM **官網業績**比例分攤。這五個數字每月要人工帶進 `--ad-personal/--ad-shared`。
-- **`upload_perf.py` 的庫存金額有乘匯率**（比照 `snapshot_stock.py`），
-  Excel 報表的滯銷率則是用未乘匯率的批價值，兩者會差 1% 上下，不是 bug。
-  儀表板本來就優先採用每日快照，`upload_perf.py` 送的庫存欄位只是「完全沒快照」時的退路。
+  **共用欄位要自己先把 Google 加進去再輸入**，腳本不會自己加。
+  共用再由 `calc_script.py` 依各 PM **官網業績**比例分攤。
 - PM 歸屬靠商品標籤認人，**沒有 PM 標籤的商品整筆不列入任何人的業績**。
   跑之前先看腳本回報的「對不到 PM」金額，該補標籤就補。
+  （2026-08 實測：`SH1S018600 行動吧檯保冰箱桌` 標籤全空白，NT$205,766 沒算到任何人。）
+
+### `tools/upload_perf.py`（備援，平常不要用）
+
+雲端 session 算完月報、而使用者手上沒有輸入檔時，用它產上傳封包。
+**它跟 `upload_performance.py` 寫同一個 KV 鍵，兩邊欄位形狀若不一致會互相覆蓋**，
+所以正常情況一律走 `.command`。
+
+```bash
+python3 tools/upload_perf.py out/ --month 2026-08 --save-json perf.json
+# 再在有網路的機器上 curl --data-binary @perf.json（不需要 pandas）
+```
+
+它的庫存金額有乘匯率（比照 `snapshot_stock.py`），Excel 報表的滯銷率則是用未乘匯率的
+批價值，兩者會差 1% 上下。儀表板本來就優先採用每日快照，這些庫存欄位只是沒快照時的退路。
 
 ## 開發注意事項
 
